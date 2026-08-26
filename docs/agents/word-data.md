@@ -7,26 +7,98 @@ learner's row in `words` keeps only their own progress and points at it.
 
 ## What a row is made of
 
-| Column                    | Filled by                        | Read as                              |
-| ------------------------- | -------------------------------- | ------------------------------------ |
-| `ipa`                     | api.dictionaryapi.dev            | The pronunciation under a word       |
-| `definitions`, `examples` | DeepSeek, dictionary as fallback | The senses, when there is no card    |
-| `sense_source`            | whichever of the two won         | Nothing; it gates re-lookups         |
-| `detail`                  | Workers AI, `gpt-oss-120b`       | The card: senses with their examples and Chinese, collocations, word family |
-| `audio_key`               | OpenAI TTS, into R2              | The speaker button                   |
+Here is the row for "risk", with `detail` held back for a moment. The three list
+columns are `TEXT` holding JSON, read through `entrySenses`,
+`entryExamples` and `entryDetail` in `src/lib/entries.ts`, which return empty
+rather than throwing on anything malformed:
 
-The four sources play to their strengths. The free dictionary is the only one
-that gives reliable IPA, and its own senses are a last resort because they
-arrive in historical order — that ordering is what once defined "despite" as a
-noun meaning disdain. DeepSeek orders senses by how common they are today, which
-is what `sense_source: 'model'` records. Workers AI writes the card, and
-`src/lib/word-detail.ts` throws out the parts of its answer that came back
-wrong: a definition written in Chinese, a gloss that translates the example
-rather than the definition, a pattern in grammar shorthand.
+```json
+{
+  "normalized": "risk",
+  "headword": "risk",
+  "ipa": "/ɹɪsk/",
+  "definitions": [
+    { "partOfSpeech": "noun", "definition": "the chance that something bad will happen" },
+    { "partOfSpeech": "verb", "definition": "to expose yourself or something to danger or loss" }
+  ],
+  "examples": ["There is a high risk of flooding after the heavy rain."],
+  "sense_source": "model",
+  "audio_key": "word-audio/marin/risk.mp3",
+  "updated_at": "2026-08-26T20:41:02.000Z"
+}
+```
 
-Both surfaces prefer the card when there is one. `explore.tsx` and
-`words/$wordId.tsx` fall back to `definitions` only for words the pre-warm pass
-has not reached.
+**`normalized`** is the primary key and the only thing anything joins on —
+lowercased and whitespace-collapsed by `normalizeHeadword`, so "Risk", "risk"
+and " risk " are one row. **`headword`** is the spelling to print, which is why
+both exist: a learner who typed "Risk" still sees the canonical form.
+
+**`ipa`** — `/ɹɪsk/` — is the pronunciation printed under the headword on the
+word page. It is display only; the speaker button does not use it.
+
+**`definitions`** is the fallback set of senses, shown on a card or word page
+only when there is no `detail`. It has a second job that has nothing to do with
+display: lesson generation builds the article's glossary from the first sense of
+each word (`generate-lesson.ts`), and the tap-a-word gloss sheet in a lesson
+shows the first sense too. An empty one is also what puts "Looking this one up…"
+on a feed card, since `browse.ts` calls a card pending when it has no senses.
+
+**`examples`** — `["There is a high risk of flooding after the heavy rain."]` —
+is the sentence supply for everything that needs one line rather than a whole
+card: the gloss sheet, the quiz questions in a lesson, and the article prompt.
+Cards without a `detail` show up to two of them.
+
+**`sense_source`** — `model` here — is a ladder of three values that nothing
+displays. `pending` means the row was reserved when a word was saved and never
+filled in, `legacy` means the senses came from the dictionary's historical
+ordering and are worth redoing, and `model` means DeepSeek ordered them by how
+common they are today, so every lookup path leaves the row alone from then on.
+
+**`audio_key`** — `word-audio/marin/risk.mp3` — points at the clip in R2. The
+voice is part of the path on purpose: changing `TTS_VOICE` changes the key, the
+old object stops matching, and the endpoint speaks the word again rather than
+serving a voice the rest of the app has moved on from.
+
+**`detail`** is the card, and the only column Workers AI writes. Abridged here;
+the stored row carries both senses and six collocations:
+
+```json
+{
+  "usage": {
+    "pattern": "risk doing something",
+    "example": "He decided to risk moving to a new city."
+  },
+  "senses": [
+    {
+      "pos": "noun",
+      "definition": "the chance that something bad will happen",
+      "example": "There is a high risk of flooding after the heavy rain.",
+      "zh": "可能发生的坏事的可能性"
+    }
+  ],
+  "collocations": ["risk of", "risk factor", "risk assessment", "high risk"],
+  "family": [
+    { "word": "risky", "pos": "adjective" },
+    { "word": "riskiness", "pos": "noun" }
+  ]
+}
+```
+
+`senses` is what both surfaces show when it exists, one box per sense, and `zh`
+is what the 中文 button reveals under each definition. `collocations` is the
+"Goes with" row of chips on the word page and `family` is "Same family" below
+it. `usage` is generated but displayed nowhere at the moment: it was on the card
+and on the word page, and both were taken off again. It is kept because the pool
+has not been described yet, so keeping it costs a few tokens now and putting it
+back later would cost a regeneration.
+
+The sources play to their strengths. The free dictionary is the only one that
+gives reliable IPA, and its own senses are a last resort because of that
+historical ordering — it is what once defined "despite" as a noun meaning
+disdain. Workers AI writes the card, and `src/lib/word-detail.ts` throws out the
+parts of its answer that came back wrong: a definition written in Chinese, a
+gloss that translates the example rather than the definition, a pattern in
+grammar shorthand.
 
 ## Ahead of time
 
@@ -83,6 +155,9 @@ recomputes it.
 ## Rough edges
 
 These are known and unfixed, listed so nobody rediscovers them the hard way.
+The first three are answered by
+[one shape for a word](../superpowers/specs/2026-08-26-one-shape-for-a-word.md),
+which is agreed but not yet built.
 
 **A word outside the pool never gets a card.** The describe phase only walks
 `src/data/vocabulary.ts`, and no request path writes `detail`. The words a
