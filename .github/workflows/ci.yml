@@ -42,12 +42,14 @@ jobs:
       # all from git — deploys. `public/` is not on that list; those files are
       # served.
       - name: Deploy
+        id: deploy
         if: github.ref == 'refs/heads/main' && github.repository == 'imsobear/daily-english'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           # An identifier rather than a credential, and useless without one.
           CLOUDFLARE_ACCOUNT_ID: 0c8c9a41f55c7f43aafb16c63932e723
         run: |
+          set -o pipefail
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "No CLOUDFLARE_API_TOKEN secret set, so nothing was deployed."
             exit 0
@@ -59,4 +61,62 @@ jobs:
             exit 0
           fi
           pnpm exec wrangler d1 migrations apply english-lessons --remote
-          pnpm exec wrangler deploy
+          pnpm exec wrangler deploy | tee /tmp/deploy.log
+          # What the mail below reports, and what a rollback would undo.
+          {
+            echo "shipped=true"
+            echo "version=$(sed -n 's/^Current Version ID: //p' /tmp/deploy.log | tail -1)"
+          } >> "$GITHUB_OUTPUT"
+
+      # A line in the inbox whenever production moves, or fails to. Sent by the
+      # same Cloudflare account that just deployed, from a domain onboarded to
+      # Email Sending, so nothing here depends on a third party. A merge that
+      # only touched prose says nothing, because nothing happened; a run that
+      # fell over before the deploy says so, since silence would read as
+      # success. Mail that will not send is reported and forgiven — a deploy
+      # that worked did not stop working because the news about it got lost.
+      - name: Email the result
+        if: >-
+          always() && github.ref == 'refs/heads/main' &&
+          github.repository == 'imsobear/daily-english' &&
+          (steps.deploy.outputs.shipped == 'true' || job.status == 'failure')
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 0c8c9a41f55c7f43aafb16c63932e723
+          TO: ${{ secrets.DEPLOY_EMAIL_TO }}
+          SHIPPED: ${{ steps.deploy.outputs.shipped }}
+          VERSION: ${{ steps.deploy.outputs.version }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$TO" ] || [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "No recipient or no token, so no mail."
+            exit 0
+          fi
+
+          title=$(printf '%s' "$MESSAGE" | head -1)
+          if [ "$SHIPPED" = "true" ]; then
+            subject="Deployed: $title"
+            body=$(printf '%s\n\nLive at https://english.readish.app\nCommit %s\nVersion %s\n\nRun: %s\n\nTo put the previous version back:\n  pnpm exec wrangler rollback\n' \
+              "$MESSAGE" "$GITHUB_SHA" "${VERSION:-unknown}" "$RUN")
+          else
+            subject="Deploy failed: $title"
+            body=$(printf '%s\n\nNothing was deployed; production is untouched.\nCommit %s\n\nRun: %s\n' \
+              "$MESSAGE" "$GITHUB_SHA" "$RUN")
+          fi
+
+          # Through jq rather than a here-doc: a commit message is arbitrary
+          # text, and quoting it by hand is how you send broken JSON one day.
+          jq -n --arg to "$TO" --arg subject "$subject" --arg text "$body" '{
+            to: $to,
+            from: { address: "deploys@readish.app", name: "Daily English" },
+            subject: $subject,
+            text: $text
+          }' > /tmp/mail.json
+
+          curl -sS --fail-with-body -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/email/sending/send" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data @/tmp/mail.json ||
+            echo "The mail did not go out. The deploy above is unaffected."
