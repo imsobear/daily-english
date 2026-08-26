@@ -171,20 +171,12 @@ function WordCardPage() {
           </Card>
         ) : (
           <>
-            {detail?.usage ? (
-              <section>
-                <h3 className="kicker mb-2 px-1">Used as</h3>
-                <div className="card-soft px-4 py-3">
-                  <p className="text-[1.0625rem] font-extrabold leading-relaxed">
-                    {detail.usage.pattern}
-                  </p>
-                  <p className="mt-1 text-[1.0625rem] italic leading-relaxed text-ink-soft">
-                    {detail.usage.example}
-                  </p>
-                </div>
-              </section>
-            ) : null}
-
+            {/*
+              No pattern here, deliberately. It belongs on the feed, where a
+              card is glanced at and a definition is not enough to use the
+              word. This page is what you open when you want the whole entry,
+              and every sense below already carries a sentence.
+            */}
             <section>
               <h3 className="kicker mb-2 px-1">Meanings</h3>
               <ul className="space-y-2">
