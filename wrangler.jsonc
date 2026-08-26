@@ -32,7 +32,12 @@
   // its REST API with a token, the way DeepSeek and OpenAI are called here: the
   // binding has no local implementation, so the test pool opens an
   // authenticated session to Cloudflare merely because it is declared, and CI
-  // has no token to open it with.
+  // has no token to open it with. The account id is half of that call's
+  // address and is in the deploy workflow already, so it is a var; only the
+  // token is a secret.
+  "vars": {
+    "CLOUDFLARE_ACCOUNT_ID": "0c8c9a41f55c7f43aafb16c63932e723"
+  },
   "workflows": [
     {
       "name": "lesson-generation",

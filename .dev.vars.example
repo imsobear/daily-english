@@ -25,10 +25,9 @@ DEEPSEEK_API_KEY=
 # Word cards — the usage pattern, collocations and family under each word —
 # come from Workers AI, and only during the pre-warm pass. Locally, leave
 # WORKERS_AI_MOCK_URL pointed at `pnpm mock:ai`; in production the Worker needs
-# the account id and a token with Workers AI read access:
+# a token with Workers AI read access (the account id is a var already):
 #   pnpm exec wrangler secret put WORKERS_AI_API_TOKEN
 # WORKERS_AI_MOCK_URL=http://127.0.0.1:8799/word-card
-# CLOUDFLARE_ACCOUNT_ID=
 # WORKERS_AI_API_TOKEN=
 
 # Google OAuth client, for Gmail sign-in. Locally you can skip these and use
