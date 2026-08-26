@@ -33,12 +33,12 @@ to recommend a word, and a wrong verdict can be corrected by editing the JSON.
 
 Which words a learner has already been shown lives in `word_offers`, and is
 what stops a shuffle from repeating itself between visits. The `verdict` column
-separates a word that merely scrolled past in the browse feed from one the
+separates a word that merely scrolled past in the Explore feed from one the
 learner retired with "Know it", which never comes back.
 
 ## Warming the pool
 
-The browse feed shows pool words as full cards — definition, IPA, example,
+The Explore feed shows pool words as full cards — definition, IPA, example,
 audio — but the pool file carries only headwords, and defining one costs a
 dictionary fetch plus a model call while speaking it costs TTS. Done on demand
 that is a feed of blanks, so it is done in advance instead:

@@ -13,9 +13,9 @@ import {
 } from '#/server/browse'
 import { addWord } from '#/server/words'
 
-export const Route = createFileRoute('/_app/browse')({
+export const Route = createFileRoute('/_app/explore')({
   loader: () => getBrowseStart(),
-  component: BrowseScreen,
+  component: ExploreScreen,
 })
 
 const LABELS: Record<BrowseSource, string> = {
@@ -27,7 +27,7 @@ const LABELS: Record<BrowseSource, string> = {
 /** What the learner has just done to a card, before the feed is rebuilt. */
 type Mark = 'saved' | 'known'
 
-function BrowseScreen() {
+function ExploreScreen() {
   const start = Route.useLoaderData()
   const [source, setSource] = useState<BrowseSource>(start.source)
   const [cards, setCards] = useState<BrowseCard[]>(start.cards)
@@ -153,7 +153,7 @@ function BrowseScreen() {
       style={{ bottom: 'calc(3.5rem + env(safe-area-inset-bottom))' }}
     >
       <header className="safe-top flex items-center gap-3 px-3.5 pb-2">
-        <h1 className="text-xl font-black tracking-tight">Browse</h1>
+        <h1 className="text-xl font-black tracking-tight">Explore</h1>
         <div
           role="tablist"
           aria-label="Which words to show"

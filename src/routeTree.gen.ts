@@ -13,7 +13,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
-import { Route as AppBrowseRouteImport } from './routes/_app/browse'
+import { Route as AppExploreRouteImport } from './routes/_app/explore'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppWordsRouteImport } from './routes/_app/words'
 import { Route as LessonsLessonIdRouteImport } from './routes/lessons/$lessonId'
@@ -48,9 +48,9 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppBrowseRoute = AppBrowseRouteImport.update({
-  id: '/browse',
-  path: '/browse',
+const AppExploreRoute = AppExploreRouteImport.update({
+  id: '/explore',
+  path: '/explore',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -128,7 +128,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/welcome': typeof WelcomeRoute
-  '/browse': typeof AppBrowseRoute
+  '/explore': typeof AppExploreRoute
   '/settings': typeof AppSettingsRoute
   '/words': typeof AppWordsRouteWithChildren
   '/lessons/$lessonId': typeof LessonsLessonIdRoute
@@ -147,7 +147,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/welcome': typeof WelcomeRoute
-  '/browse': typeof AppBrowseRoute
+  '/explore': typeof AppExploreRoute
   '/settings': typeof AppSettingsRoute
   '/lessons/$lessonId': typeof LessonsLessonIdRoute
   '/words/add': typeof WordsAddRoute
@@ -168,7 +168,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/welcome': typeof WelcomeRoute
-  '/_app/browse': typeof AppBrowseRoute
+  '/_app/explore': typeof AppExploreRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/words': typeof AppWordsRouteWithChildren
   '/lessons/$lessonId': typeof LessonsLessonIdRoute
@@ -191,7 +191,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/welcome'
-    | '/browse'
+    | '/explore'
     | '/settings'
     | '/words'
     | '/lessons/$lessonId'
@@ -210,7 +210,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/welcome'
-    | '/browse'
+    | '/explore'
     | '/settings'
     | '/lessons/$lessonId'
     | '/words/add'
@@ -230,7 +230,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/welcome'
-    | '/_app/browse'
+    | '/_app/explore'
     | '/_app/settings'
     | '/_app/words'
     | '/lessons/$lessonId'
@@ -292,11 +292,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/browse': {
-      id: '/_app/browse'
-      path: '/browse'
-      fullPath: '/browse'
-      preLoaderRoute: typeof AppBrowseRouteImport
+    '/_app/explore': {
+      id: '/_app/explore'
+      path: '/explore'
+      fullPath: '/explore'
+      preLoaderRoute: typeof AppExploreRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings': {
@@ -415,14 +415,14 @@ const AppWordsRouteWithChildren = AppWordsRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
-  AppBrowseRoute: typeof AppBrowseRoute
+  AppExploreRoute: typeof AppExploreRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppWordsRoute: typeof AppWordsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppBrowseRoute: AppBrowseRoute,
+  AppExploreRoute: AppExploreRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppWordsRoute: AppWordsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,

@@ -6,8 +6,8 @@ import { cn } from '#/lib/utils'
 
 const tabs = [
   { to: '/', label: 'Today', icon: Home },
-  { to: '/browse', label: 'Browse', icon: Layers },
   { to: '/words', label: 'Words', icon: BookOpen },
+  { to: '/explore', label: 'Explore', icon: Layers },
   { to: '/settings', label: 'You', icon: Settings },
 ] as const
 
