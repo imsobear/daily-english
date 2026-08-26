@@ -142,6 +142,18 @@ function inflectionsOf(base: string) {
   return forms
 }
 
+/**
+ * Grammar notation, where a phrase was asked for.
+ *
+ * Told twice over to write "risk doing something" rather than "risk + V-ing",
+ * the model still reaches for the shorthand every tenth word or so — and a
+ * dictionary convention nobody taught the learner is worse than no pattern at
+ * all, so the card goes out without one and keeps everything else.
+ */
+function isShorthand(pattern: string) {
+  return /\+|\.\.\.|…|_|\[|\bV-ing\b|\bsth\b|\bsb\b|\bN\b/i.test(pattern)
+}
+
 function keepFamily(headword: string, family: WordRelative[]) {
   const bases = [headword.toLowerCase(), ...family.map((item) => item.word)]
   return family.filter((item) => {
@@ -181,7 +193,8 @@ export function parseWordDetail(
   if (senses.length === 0) return null
 
   const rawUsage = source.usage as Record<string, unknown> | undefined
-  const pattern = text(rawUsage?.pattern, 80)
+  const candidate = text(rawUsage?.pattern, 80)
+  const pattern = candidate && !isShorthand(candidate) ? candidate : null
   const example = text(rawUsage?.example, 240)
 
   const family = keepFamily(
@@ -202,8 +215,11 @@ export function parseWordDetail(
       ...new Set(
         asArray(source.collocations).flatMap((item) => {
           const phrase = text(item, 48)?.toLowerCase()
-          // A single word is not a collocation, it is the word again.
-          return phrase && phrase.includes(' ') ? [phrase] : []
+          // A single word is not a collocation, it is the word again — and a
+          // phrase the pattern above already shows is a line of the card spent
+          // saying the same thing twice.
+          if (!phrase || !phrase.includes(' ')) return []
+          return phrase === pattern?.toLowerCase() ? [] : [phrase]
         }),
       ),
     ].slice(0, MAX_COLLOCATIONS),

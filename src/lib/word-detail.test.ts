@@ -85,6 +85,19 @@ describe('parseWordDetail', () => {
     expect(detail?.family).toEqual([])
   })
 
+  it('does not chip a phrase the pattern already shows', () => {
+    const detail = parseWordDetail(
+      'cycle',
+      JSON.stringify({
+        ...CARD,
+        usage: { pattern: 'break the cycle', example: 'She broke the cycle.' },
+        collocations: ['break the cycle', 'full cycle'],
+      }),
+    )
+
+    expect(detail?.collocations).toEqual(['full cycle'])
+  })
+
   it('drops single words offered as collocations', () => {
     const detail = parseWordDetail(
       'risk',
@@ -92,6 +105,41 @@ describe('parseWordDetail', () => {
     )
 
     expect(detail?.collocations).toEqual(['take a risk'])
+  })
+
+  it('refuses a pattern written in grammar shorthand', () => {
+    for (const pattern of [
+      'risk + V-ing',
+      'a firm ...',
+      'comply with + noun',
+      'tell sb about sth',
+      'at risk of ___',
+    ]) {
+      const detail = parseWordDetail(
+        'risk',
+        JSON.stringify({ ...CARD, usage: { pattern, example: 'A sentence.' } }),
+      )
+
+      expect(detail?.usage, pattern).toBeNull()
+      // The rest of the card is fine, and worth keeping.
+      expect(detail?.collocations).toHaveLength(2)
+    }
+  })
+
+  it('keeps the patterns that read like English', () => {
+    for (const pattern of [
+      'risk doing something',
+      'a bleak outlook/future',
+      'comply with something',
+      'tell somebody about something',
+    ]) {
+      const detail = parseWordDetail(
+        'risk',
+        JSON.stringify({ ...CARD, usage: { pattern, example: 'A sentence.' } }),
+      )
+
+      expect(detail?.usage?.pattern, pattern).toBe(pattern)
+    }
   })
 
   it('keeps a usage pattern only when its example came too', () => {
