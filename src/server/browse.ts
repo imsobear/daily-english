@@ -6,13 +6,15 @@ import { userSettings, wordOffers, words } from '#/db/schema'
 import { TTS_VOICE } from '#/lib/ai'
 import {
   asBrowseSource,
-  expandPos,
   mineShare,
   weave,
   type BrowseSource,
 } from '#/lib/browse'
 import { isDeepSeekConfigured, readDeepSeekConfig } from '#/lib/deepseek'
-import { normalizeHeadword } from '#/lib/dictionary'
+import {
+  normalizeHeadword,
+  type DictionarySense,
+} from '#/lib/dictionary'
 import {
   ensureEntry,
   entryExamples,
@@ -32,12 +34,13 @@ export type BrowseCard = {
   ipa: string | null
   audioUrl: string
   level: CefrLevel | null
-  partOfSpeech: string | null
-  definition: string | null
-  example: string | null
+  definitions: DictionarySense[]
+  examples: string[]
   /** Set when this is already one of the learner's words. */
   wordId: string | null
   familiarity: number | null
+  /** How the learner added it; null for words they have not saved. */
+  source: string | null
   /** Nobody has defined this word yet; the lookup is running behind us. */
   pending: boolean
 }
@@ -95,26 +98,23 @@ function cardOf(input: {
   headword: string
   entry: Entry | undefined
   level: CefrLevel | null
-  pos: string | null
   wordId?: string | null
   familiarity?: number | null
+  source?: string | null
 }): BrowseCard {
-  const senses = entrySenses(input.entry)
-  const examples = entryExamples(input.entry)
+  const definitions = entrySenses(input.entry)
   return {
     normalized: input.normalized,
     headword: input.entry?.headword ?? input.headword,
     ipa: input.entry?.ipa ?? null,
     audioUrl: audioUrl(input.normalized),
     level: input.level,
-    // The sense that is actually shown knows its own part of speech; the
-    // pool's is a fallback for words it has not defined yet.
-    partOfSpeech: senses[0]?.partOfSpeech ?? input.pos,
-    definition: senses[0]?.definition ?? null,
-    example: examples[0] ?? null,
+    definitions,
+    examples: entryExamples(input.entry),
     wordId: input.wordId ?? null,
     familiarity: input.familiarity ?? null,
-    pending: senses.length === 0,
+    source: input.source ?? null,
+    pending: definitions.length === 0,
   }
 }
 
@@ -157,6 +157,7 @@ async function mineCards(
       headword: true,
       normalized: true,
       familiarity: true,
+      source: true,
     },
   })
   const eligible = rows.filter((row) => atLevel(row.normalized, level))
@@ -183,9 +184,9 @@ async function mineCards(
       headword: row.headword,
       entry: entries.get(row.normalized),
       level: pool?.level ?? null,
-      pos: expandPos(pool?.pos),
       wordId: row.id,
       familiarity: row.familiarity,
+      source: row.source,
     })
   })
   return {
@@ -264,7 +265,6 @@ async function freshCards(userId: string, level: CefrLevel, wanted: number) {
       headword: pick.headword,
       entry: entries.get(normalized[i]),
       level: pick.level,
-      pos: expandPos(pick.pos),
     }),
   )
 

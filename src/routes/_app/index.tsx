@@ -4,11 +4,13 @@ import {
   Check,
   ChevronRight,
   Flame,
+  Play,
   Plus,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { PageHeader } from '#/components/bottom-nav'
+import { usePlaylist } from '#/components/playlist-player'
 import {
   Button,
   ButtonLink,
@@ -79,8 +81,10 @@ function HomePage() {
     settings,
     activeLesson,
     history,
+    playlist,
   } = snapshot
   const router = useRouter()
+  const player = usePlaylist()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const generating = history.some((lesson) => lesson.status === 'generating')
@@ -274,7 +278,21 @@ function HomePage() {
         </Card>
 
         <section>
-          <h2 className="kicker mb-1.5 px-1">History</h2>
+          <div className="mb-2 flex items-center justify-between gap-3 px-1">
+            <h2 className="text-xl font-black tracking-tight">Lessons</h2>
+            {playlist.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => player.start(playlist)}
+                aria-label={
+                  player.playing ? 'Open lesson player' : 'Play lessons'
+                }
+                className="grid size-11 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-600 active:bg-brand-100"
+              >
+                <Play className="size-5 translate-x-px" fill="currentColor" />
+              </button>
+            ) : null}
+          </div>
           {history.length === 0 ? (
             <EmptyState
               title="No lessons yet"

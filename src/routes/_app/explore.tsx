@@ -2,7 +2,13 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { ArrowUpRight, Check, ChevronsDown, Plus, Volume2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { Button, ButtonLink, EmptyState, Spinner } from '#/components/ui'
+import {
+  Button,
+  ButtonLink,
+  EmptyState,
+  ProgressRing,
+  Spinner,
+} from '#/components/ui'
 import { BROWSE_SOURCES, type BrowseSource } from '#/lib/browse'
 import {
   getBrowseMore,
@@ -280,97 +286,147 @@ function WordSlide({
   onDismiss: () => void
 }) {
   const mine = Boolean(card.wordId)
+  const percent =
+    card.familiarity != null ? Math.round(card.familiarity * 100) : null
 
   return (
-    <article className="relative flex h-full snap-start flex-col justify-center px-5">
-      <div className="mx-auto w-full max-w-sm">
-        <div className="flex items-center gap-2">
+    <article className="relative flex h-full snap-start flex-col px-5 pt-1 pb-4">
+      <div className="mx-auto flex min-h-0 w-full max-w-sm flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {card.level ? (
-            <span className="rounded-full bg-surface-sunk px-2 py-0.5 text-[0.6875rem] font-black tracking-wider text-ink-soft">
-              {card.level}
-            </span>
+            <p className="mb-2">
+              <span className="rounded-full bg-surface-sunk px-2 py-0.5 text-[0.6875rem] font-black tracking-wider text-ink-soft">
+                {card.level}
+              </span>
+            </p>
           ) : null}
-          {card.partOfSpeech ? (
-            <span className="text-[0.6875rem] font-black uppercase tracking-wider text-ink-faint">
-              {card.partOfSpeech}
-            </span>
-          ) : null}
-          {mine ? (
-            <span className="ml-auto text-[0.6875rem] font-black uppercase tracking-wider text-brand-600">
-              Yours
-            </span>
-          ) : null}
-        </div>
 
-        <button
-          type="button"
-          onClick={onSpeak}
-          aria-label={`Hear ${card.headword}`}
-          className="mt-2 flex w-full items-center gap-3 text-left"
-        >
-          <span className="selectable min-w-0 text-4xl font-black tracking-tight">
-            {card.headword}
-          </span>
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-sunk text-ink-soft">
-            <Volume2 className="size-5" />
-          </span>
-        </button>
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={onSpeak}
+                aria-label={`Hear ${card.headword}`}
+                className="flex w-full items-center gap-3 text-left"
+              >
+                <span className="selectable min-w-0 text-4xl font-black tracking-tight">
+                  {card.headword}
+                </span>
+                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-sunk text-ink-soft">
+                  <Volume2 className="size-5" />
+                </span>
+              </button>
+              {card.ipa ? (
+                <p className="mt-1.5 text-sm text-ink-soft">{card.ipa}</p>
+              ) : null}
+              {card.source ? (
+                <p className="kicker mt-1">
+                  {card.source === 'recommendation'
+                    ? 'Recommended'
+                    : 'Added by you'}
+                </p>
+              ) : null}
+            </div>
+            {mine ? (
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <span className="text-[0.6875rem] font-black uppercase tracking-wider text-brand-600">
+                  Yours
+                </span>
+                {percent != null ? (
+                  <ProgressRing
+                    value={percent}
+                    max={100}
+                    size={60}
+                    stroke={7}
+                    tone={percent >= 80 ? 'grass' : 'brand'}
+                  >
+                    <span className="tabular text-xs font-black">{percent}%</span>
+                  </ProgressRing>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
 
-        {card.ipa ? (
-          <p className="mt-1.5 text-sm text-ink-soft">{card.ipa}</p>
-        ) : null}
-
-        {card.pending ? (
-          <p className="mt-5 flex items-center gap-2 text-[1.0625rem] text-ink-faint">
-            <Spinner /> Looking this one up…
-          </p>
-        ) : (
-          <p className="selectable mt-5 text-[1.0625rem] leading-relaxed">
-            {card.definition ?? 'No definition for this one yet.'}
-          </p>
-        )}
-
-        {card.example ? (
-          <p className="selectable mt-3 border-l-2 border-brand-300 pl-3 text-[0.9375rem] italic leading-relaxed text-ink-soft">
-            {card.example}
-          </p>
-        ) : null}
-
-        <div className="mt-7 flex gap-2">
-          {mine ? (
-            <ButtonLink
-              to="/words/$wordId"
-              params={{ wordId: card.wordId ?? '' }}
-              tone="neutral"
-              block
-            >
-              Open this word
-            </ButtonLink>
-          ) : mark === 'saved' ? (
-            <Button tone="neutral" block disabled>
-              <Check className="size-4" /> Saved
-            </Button>
-          ) : mark === 'known' ? (
-            <Button tone="ghost" block disabled>
-              Marked as known
-            </Button>
+          {card.pending ? (
+            <p className="mt-5 flex items-center gap-2 text-[1.0625rem] text-ink-faint">
+              <Spinner /> Looking this one up…
+            </p>
           ) : (
             <>
-              <Button onClick={onSave} block>
-                <Plus className="size-4" /> Save
-              </Button>
-              <Button onClick={onDismiss} tone="neutral" className="shrink-0">
-                Know it
-              </Button>
+              <section className="mt-5">
+                <h3 className="kicker mb-2">Meanings</h3>
+                {card.definitions.length === 0 ? (
+                  <p className="text-[1.0625rem] leading-relaxed text-ink-soft">
+                    No definition for this one yet.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {card.definitions.map((sense, index) => (
+                      <li
+                        key={`${sense.partOfSpeech}-${index}`}
+                        className="card-soft px-4 py-3"
+                      >
+                        <p className="kicker">{sense.partOfSpeech}</p>
+                        <p className="selectable mt-1 text-[1.0625rem] leading-relaxed">
+                          {sense.definition}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              {card.examples.length > 0 ? (
+                <section className="mt-4 pb-2">
+                  <h3 className="kicker mb-2">In use</h3>
+                  <ul className="space-y-2">
+                    {card.examples.map((example) => (
+                      <li
+                        key={example}
+                        className="selectable rounded-2xl bg-surface-sunk px-4 py-3 text-[1.0625rem] italic leading-relaxed text-ink-soft"
+                      >
+                        {example}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
             </>
           )}
         </div>
+
+        {mine ? null : (
+          <div className="mt-3 flex shrink-0 gap-2">
+            {mark === 'saved' ? (
+              <Button tone="neutral" block disabled>
+                <Check className="size-4" /> Saved
+              </Button>
+            ) : mark === 'known' ? (
+              <Button tone="ghost" block disabled>
+                Marked as known
+              </Button>
+            ) : (
+              <>
+                <Button onClick={onSave} block>
+                  <Plus className="size-4" /> Save
+                </Button>
+                <Button onClick={onDismiss} tone="neutral" className="shrink-0">
+                  Know it
+                </Button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Only on the very first card: a feed that has to be scrolled should
           say so once, then never again. */}
       {first ? (
-        <span className="absolute inset-x-0 bottom-5 grid place-items-center text-ink-faint">
+        <span
+          className={`pointer-events-none absolute inset-x-0 grid place-items-center text-ink-faint ${
+            mine ? 'bottom-5' : 'bottom-20'
+          }`}
+        >
           <ChevronsDown className="size-5 animate-bounce" />
         </span>
       ) : null}

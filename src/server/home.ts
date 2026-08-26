@@ -4,6 +4,7 @@ import { and, count, desc, eq, inArray, isNotNull } from 'drizzle-orm'
 import { getDb } from '#/db'
 import { lessonArticles, lessons, words } from '#/db/schema'
 import { shiftDate } from '#/lib/day'
+import { clipUrls, tracksFrom } from '#/lib/playlist'
 import { requireUser } from '#/lib/session'
 import { learnerDate, learnerToday } from '#/server/day'
 import { readSettings } from '#/server/settings'
@@ -122,6 +123,23 @@ export const getHomeSnapshot = createServerFn({ method: 'GET' }).handler(
       today,
     )
 
+    const playlist = tracksFrom(
+      lessonRows.map((lesson) => {
+        const article = firstByLesson.get(lesson.id)
+        return {
+          lessonId: lesson.id,
+          title: article?.title ?? null,
+          clips: article
+            ? clipUrls({
+                id: article.id,
+                audioKey: article.audioKey,
+                audioChunks: article.audioChunks,
+              })
+            : [],
+        }
+      }),
+    )
+
     return {
       today,
       wordCount: countRow[0]?.value ?? 0,
@@ -130,6 +148,7 @@ export const getHomeSnapshot = createServerFn({ method: 'GET' }).handler(
       settings,
       activeLesson: active,
       history: lessonList,
+      playlist,
     }
   },
 )
