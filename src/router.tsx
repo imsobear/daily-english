@@ -1,6 +1,7 @@
 import { createRouter as createTanStackRouter } from '@tanstack/react-router'
 
 import { RoutePending } from './components/route-pending'
+import { claimSwipeBack } from './lib/swipe-back'
 import { routeTree } from './routeTree.gen'
 
 export function getRouter() {
@@ -36,7 +37,10 @@ export function getRouter() {
           (globalThis as { history?: History }).history?.state?.__TSR_index ?? 0
         const back = lastIndex !== null && index < lastIndex
         lastIndex = index
-        return back ? ['back'] : ['forward']
+        if (!back) return ['forward']
+        // A swipe has already carried the screen off, so sliding the pop here
+        // as well would play it twice. False skips the transition outright.
+        return claimSwipeBack() ? false : ['back']
       },
     },
   })

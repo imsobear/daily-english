@@ -1,6 +1,8 @@
 import { useRouter } from '@tanstack/react-router'
 import { useEffect, useRef, type ReactNode } from 'react'
 
+import { armSwipeBack } from '#/lib/swipe-back'
+
 /** How close to the left edge a touch must start to count as a back swipe. */
 const EDGE = 24
 /** Movement before the gesture commits to being horizontal rather than a scroll. */
@@ -29,14 +31,17 @@ function isStandalone() {
  * Installed to the home screen there is no browser chrome, which takes Safari's
  * back swipe with it — the one gesture people use without thinking. This puts
  * it back for standalone only, since in a browser tab it would fight the
- * system gesture it is imitating.
+ * system gesture it is imitating. Either way the edge touch is worth noting,
+ * because whichever of the two animates the swipe, the router must not animate
+ * the pop on top of it.
  */
 function useEdgeSwipeBack(shellRef: React.RefObject<HTMLDivElement | null>) {
   const router = useRouter()
 
   useEffect(() => {
     const shell = shellRef.current
-    if (!shell || !isStandalone()) return
+    if (!shell) return
+    const dragging = isStandalone()
 
     let startX = 0
     let startY = 0
@@ -61,6 +66,8 @@ function useEdgeSwipeBack(shellRef: React.RefObject<HTMLDivElement | null>) {
       if (event.touches.length !== 1) return
       const touch = event.touches[0]
       if (touch.clientX > EDGE) return
+      armSwipeBack()
+      if (!dragging) return
       if (!router.history.canGoBack()) return
 
       startX = touch.clientX
@@ -115,6 +122,8 @@ function useEdgeSwipeBack(shellRef: React.RefObject<HTMLDivElement | null>) {
       shell.style.transition = `transform ${SLIDE_OUT_MS}ms ease-out`
       shell.style.transform = `translate3d(${width}px,0,0)`
       window.setTimeout(() => {
+        // Again, in case the drag itself outlasted the touch that armed it.
+        armSwipeBack()
         router.history.back()
         // Held off-screen until the frame after the pop, so the previous screen
         // appears at rest instead of sliding in from the wrong side.
@@ -122,12 +131,16 @@ function useEdgeSwipeBack(shellRef: React.RefObject<HTMLDivElement | null>) {
       }, SLIDE_OUT_MS)
     }
 
-    // Non-passive: the move handler has to be able to cancel the scroll.
+    // Non-passive: the move handler has to be able to cancel the scroll. Kept
+    // off a browser tab entirely, where nothing is dragged and the listener
+    // would only cost the page its scroll optimisation.
     const moveOptions: AddEventListenerOptions = { passive: false }
     shell.addEventListener('touchstart', onStart, { passive: true })
-    shell.addEventListener('touchmove', onMove, moveOptions)
-    shell.addEventListener('touchend', onEnd, { passive: true })
-    shell.addEventListener('touchcancel', onEnd, { passive: true })
+    if (dragging) {
+      shell.addEventListener('touchmove', onMove, moveOptions)
+      shell.addEventListener('touchend', onEnd, { passive: true })
+      shell.addEventListener('touchcancel', onEnd, { passive: true })
+    }
 
     return () => {
       shell.removeEventListener('touchstart', onStart)
