@@ -28,10 +28,6 @@
       "bucket_name": "english-lessons-audio"
     }
   ],
-  "ai": {
-    "binding": "AI",
-    "remote": true
-  },
   "workflows": [
     {
       "name": "lesson-generation",

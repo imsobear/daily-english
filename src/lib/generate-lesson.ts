@@ -27,7 +27,6 @@ import { chunkSentences, splitSentences } from '#/lib/text'
 
 export type LessonEnv = {
   DB: D1Database
-  AI: Ai
   AUDIO: R2Bucket
   DEEPSEEK_API_KEY?: string
   DEEPSEEK_MODEL?: string

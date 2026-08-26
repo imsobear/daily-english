@@ -7,10 +7,6 @@ export function getDb() {
   return drizzle(env.DB, { schema })
 }
 
-export function getAi() {
-  return env.AI
-}
-
 export function getAudioBucket() {
   return env.AUDIO
 }

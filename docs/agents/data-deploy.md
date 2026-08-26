@@ -76,23 +76,29 @@ produce.
 
 ## Shipping a change
 
-This section is for the maintainer of [english.readish.app](https://english.readish.app).
-If you are contributing from a fork, skip it: open a pull request and do not
-run `pnpm deploy` against this Cloudflare account.
-
-Once `pnpm check` passes and the change has been tried locally:
+Pushing to `main` is the deploy. GitHub Actions runs `pnpm check`, and only if
+that passes does it apply pending migrations and put the Worker live. There is
+no separate deploy command to remember and no way to ship something that does
+not build.
 
 ```bash
-pnpm exec wrangler d1 migrations apply english-lessons --remote   # if there is one
-pnpm deploy                                                       # build + wrangler deploy
+pnpm check          # the same thing CI runs, so find out here rather than there
+git push origin main
+gh run watch        # or just wait; a failed run means nothing was deployed
 ```
 
-Migrations go first, so the deployed code never meets a schema that is missing
-its columns — additive ones are safe to apply ahead of the deploy because the
-running code simply ignores them. Destructive ones are not; see below.
+This section is otherwise for the maintainer of
+[english.readish.app](https://english.readish.app). Contributing from a fork,
+open a pull request: CI checks it, and the deploy steps are skipped because
+they are fenced to this repository and need a token a fork cannot read.
 
-CI runs `pnpm check` on every push to `main`. A push that fails CI means
-something ran differently locally.
+Migrations run before the upload, so the deployed code never meets a schema
+that is missing its columns. Additive ones are safe to apply ahead of the code
+because the running Worker ignores them. Destructive ones are not; see below.
+
+A deploy by hand is still there for an emergency — `pnpm deploy` builds and
+uploads from your machine — but it skips the checks, so the next CI run is what
+decides whether what you shipped was any good.
 
 ## Deploying a destructive change
 
@@ -106,16 +112,10 @@ and the schema disagree. Split it:
 3. A destructive migration — catch up anything written in between, then drop
    the old columns.
 
-Because the apply command takes everything pending, hold the destructive file
-outside `drizzle/` for step 1:
-
-```bash
-mv drizzle/00NN_drop_something.sql /tmp/hold/
-pnpm exec wrangler d1 migrations apply english-lessons --remote   # additive only
-pnpm deploy                                                        # build + wrangler deploy
-mv /tmp/hold/00NN_drop_something.sql drizzle/
-pnpm exec wrangler d1 migrations apply english-lessons --remote   # destructive
-```
+Because the apply command takes everything pending, the three steps are three
+pushes rather than a sequence of commands: commit the additive migration with
+the code that tolerates both shapes, push and let it deploy, then commit the
+destructive migration on its own and push again.
 
 `drizzle/0007_shared_dictionary_entries.sql` and `0008_words_drop_copied_columns.sql`
 are a worked example of the pattern.
