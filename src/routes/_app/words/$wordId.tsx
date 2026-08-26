@@ -3,7 +3,7 @@ import { ChevronLeft, Trash2, Volume2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { Button, Card, ProgressRing, Spinner } from '#/components/ui'
-import { hasChinese } from '#/lib/word-detail'
+import { hasChinese } from '#/lib/word-card'
 import { deleteWord, getWord, refreshWord } from '#/server/words'
 
 export const Route = createFileRoute('/_app/words/$wordId')({
@@ -67,23 +67,7 @@ function WordCardPage() {
   }
 
   const percent = Math.round(word.familiarity * 100)
-  const detail = word.detail
-  /*
-   * The written card carries an example inside each sense, which is where an
-   * example belongs. Words the pre-warm pass has not reached keep the older
-   * arrangement — a list of senses and a separate list of sentences — so both
-   * are rendered, and only one of them ever has anything in it.
-   */
-  const meanings = detail
-    ? detail.senses.map((sense) => ({
-        partOfSpeech: sense.pos,
-        definition: sense.definition,
-        example: sense.example,
-        zh: sense.zh,
-      }))
-    : word.definitions.map((sense) => ({ ...sense, example: null, zh: null }))
-  const legacyExamples = detail ? [] : word.examples
-  const chinese = hasChinese(detail)
+  const chinese = hasChinese(word.senses)
 
   return (
     <div className="flex min-h-full flex-col">
@@ -204,15 +188,15 @@ function WordCardPage() {
                 ) : null}
               </div>
               <ul className="space-y-1.5">
-                {meanings.map((sense, index) => (
+                {word.senses.map((sense, index) => (
                   <li
-                    key={`${sense.partOfSpeech}-${index}`}
+                    key={`${sense.pos}-${index}`}
                     className="card-soft px-3.5 py-2.5"
                   >
                     <p className="text-[0.9375rem] leading-snug">
-                      {sense.partOfSpeech ? (
+                      {sense.pos ? (
                         <span className="kicker mr-1.5 inline">
-                          {sense.partOfSpeech}{' '}
+                          {sense.pos}{' '}
                         </span>
                       ) : null}
                       {sense.definition}
@@ -222,21 +206,24 @@ function WordCardPage() {
                         {sense.zh}
                       </p>
                     ) : null}
-                    {sense.example ? (
-                      <p className="mt-1 text-sm italic leading-snug text-ink-soft">
-                        {sense.example}
+                    {sense.examples.map((example) => (
+                      <p
+                        key={example}
+                        className="mt-1 text-sm italic leading-snug text-ink-soft"
+                      >
+                        {example}
                       </p>
-                    ) : null}
+                    ))}
                   </li>
                 ))}
               </ul>
             </section>
 
-            {detail && detail.collocations.length > 0 ? (
+            {word.collocations.length > 0 ? (
               <section>
                 <h3 className="kicker mb-2 px-1">Goes with</h3>
                 <ul className="flex flex-wrap gap-2">
-                  {detail.collocations.map((phrase) => (
+                  {word.collocations.map((phrase) => (
                     <li
                       key={phrase}
                       className="rounded-full border border-hairline px-3 py-1.5 text-[0.9375rem] font-bold text-ink-soft"
@@ -248,11 +235,11 @@ function WordCardPage() {
               </section>
             ) : null}
 
-            {detail && detail.family.length > 0 ? (
+            {word.family.length > 0 ? (
               <section>
                 <h3 className="kicker mb-2 px-1">Same family</h3>
                 <ul className="space-y-1.5">
-                  {detail.family.map((relative) => (
+                  {word.family.map((relative) => (
                     <li
                       key={relative.word}
                       className="flex items-baseline gap-2 rounded-2xl bg-surface-sunk px-4 py-2.5"
@@ -261,22 +248,6 @@ function WordCardPage() {
                         {relative.word}
                       </span>
                       <span className="kicker">{relative.pos}</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-
-            {legacyExamples.length > 0 ? (
-              <section>
-                <h3 className="kicker mb-2 px-1">In use</h3>
-                <ul className="space-y-2">
-                  {legacyExamples.map((example) => (
-                    <li
-                      key={example}
-                      className="rounded-2xl bg-surface-sunk px-4 py-3 text-[1.0625rem] italic leading-relaxed text-ink-soft"
-                    >
-                      {example}
                     </li>
                   ))}
                 </ul>

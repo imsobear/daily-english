@@ -1,16 +1,18 @@
 import type { DrizzleD1Database } from 'drizzle-orm/d1'
-import { inArray, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 
 import * as schema from '#/db/schema'
 import { dictionaryEntries } from '#/db/schema'
-import type { DeepSeekConfig } from '#/lib/deepseek'
+import { lookupDictionary, type DictionaryHit } from '#/lib/dictionary'
+import type { CefrLevel } from '#/lib/settings'
+import { poolEntry } from '#/lib/vocabulary'
 import {
-  buildEntry,
-  normalizeHeadword,
-  type DictionaryHit,
-  type DictionarySense,
-} from '#/lib/dictionary'
-import { readWordDetail } from '#/lib/word-detail'
+  describeWordTwice,
+  readList,
+  readWorkersAi,
+  type Sense,
+  type WordRelative,
+} from '#/lib/word-card'
 
 /**
  * The shared word store.
@@ -27,53 +29,66 @@ export type EntriesDb = DrizzleD1Database<typeof schema>
 
 export type Entry = typeof dictionaryEntries.$inferSelect
 
-/** A word saved but not yet defined. Enrichment runs after the response. */
+/**
+ * How good an entry's senses are, and so what is left to do to it.
+ *
+ * The three values are a ladder rather than a set of origins: a word starts
+ * reserved and empty, the free dictionary gets it showable within a second,
+ * and the model eventually replaces that with senses in modern frequency
+ * order, each with its own Chinese and example. Nothing ever moves back down.
+ */
 export const PENDING = 'pending'
 
+/** Whether there is anything to show a learner yet. */
 export function isDefined(entry: Entry | undefined): entry is Entry {
-  return Boolean(entry && entry.senseSource !== PENDING)
+  return Boolean(entry && entry.source !== PENDING)
 }
 
-/** Entries whose senses came from the dictionary's historical ordering. */
-export function needsBetterSenses(entry: Entry | undefined) {
-  return !entry || entry.senseSource !== 'model'
+/** Whether the model still owes this word a card. */
+export function needsCard(entry: Entry | undefined) {
+  return !entry || entry.source !== 'model'
 }
 
-export function entrySenses(entry: Entry | undefined): DictionarySense[] {
-  return parseJson<DictionarySense>(entry?.definitions).flatMap((sense) =>
-    typeof sense?.definition === 'string' && sense.definition
+export function entrySenses(entry: Entry | undefined): Sense[] {
+  return readList<Sense>(entry?.senses).flatMap((sense) =>
+    sense && typeof sense.definition === 'string' && sense.definition
       ? [
           {
-            partOfSpeech:
-              typeof sense.partOfSpeech === 'string'
-                ? sense.partOfSpeech
-                : 'unknown',
+            pos: typeof sense.pos === 'string' ? sense.pos : '',
             definition: sense.definition,
+            zh: typeof sense.zh === 'string' ? sense.zh : null,
+            examples: Array.isArray(sense.examples)
+              ? sense.examples.filter((item) => typeof item === 'string')
+              : [],
           },
         ]
       : [],
   )
 }
 
-/** The richer card, once the pre-warm pass has written one. */
-export function entryDetail(entry: Entry | undefined) {
-  return readWordDetail(entry?.detail)
-}
-
-export function entryExamples(entry: Entry | undefined): string[] {
-  return parseJson<string>(entry?.examples).filter(
+export function entryCollocations(entry: Entry | undefined) {
+  return readList<string>(entry?.collocations).filter(
     (item) => typeof item === 'string',
   )
 }
 
-function parseJson<T>(raw: string | null | undefined): T[] {
-  if (!raw) return []
-  try {
-    const value = JSON.parse(raw) as unknown
-    return Array.isArray(value) ? (value as T[]) : []
-  } catch {
-    return []
-  }
+export function entryFamily(entry: Entry | undefined) {
+  return readList<WordRelative>(entry?.family).filter((item) => item?.word)
+}
+
+/** Every example the entry has, for the prompts that seed an article. */
+export function entryExamples(entry: Entry | undefined) {
+  return entrySenses(entry).flatMap((sense) => sense.examples)
+}
+
+/**
+ * The level to pitch a card at.
+ *
+ * Words the pool has never carried are the ones a learner typed in themselves,
+ * and B1 is the middle of the range rather than a guess about them.
+ */
+export function levelOf(normalized: string): CefrLevel {
+  return poolEntry(normalized)?.level ?? 'B1'
 }
 
 /** Read many entries at once, so a word list costs one extra query. */
@@ -109,45 +124,52 @@ export async function stubEntry(
   normalized: string,
   headword: string,
 ): Promise<Entry> {
-  const row: Entry = {
-    normalized,
-    headword,
-    ipa: null,
-    definitions: '[]',
-    examples: '[]',
-    senseSource: PENDING,
-    detail: null,
-    audioKey: null,
-    updatedAt: new Date().toISOString(),
-  }
-  await db.insert(dictionaryEntries).values(row).onConflictDoNothing()
-  return (await loadEntry(db, normalized)) ?? row
+  await db
+    .insert(dictionaryEntries)
+    .values({
+      normalized,
+      headword,
+      source: PENDING,
+      updatedAt: new Date().toISOString(),
+    })
+    .onConflictDoNothing()
+  return (
+    (await loadEntry(db, normalized)) ?? {
+      normalized,
+      headword,
+      ipa: null,
+      senses: '[]',
+      collocations: '[]',
+      family: '[]',
+      source: PENDING,
+      audioKey: null,
+      updatedAt: new Date().toISOString(),
+      definitions: '[]',
+      examples: '[]',
+      senseSource: 'legacy',
+      detail: null,
+    }
+  )
 }
 
 /**
- * Store a definition, without discarding a better one that arrived first.
+ * Store the dictionary's answer, without overwriting the model's.
  *
- * Two learners can save the same new word at the same moment and both look it
- * up; whichever write lands second must not replace model-written senses with
- * the dictionary's.
+ * Two learners can meet the same new word at the same moment and both look it
+ * up, and a word can be looked up again years after the model described it —
+ * neither may replace a card with a stopgap, which is what the `where` guards.
  */
-export async function saveEntry(
+export async function saveDictionary(
   db: EntriesDb,
+  normalized: string,
   hit: DictionaryHit,
 ): Promise<Entry> {
-  const normalized = normalizeHeadword(hit.headword)
-  const senseSource = hit.senseSource ?? 'legacy'
-  const row: Entry = {
+  const row = {
     normalized,
     headword: hit.headword,
     ipa: hit.ipa ?? null,
-    definitions: JSON.stringify(hit.definitions),
-    examples: JSON.stringify(hit.examples),
-    senseSource,
-    // Left alone on conflict below: a definition arriving late must not throw
-    // away a card the pre-warm pass has already written.
-    detail: null,
-    audioKey: null,
+    senses: JSON.stringify(hit.senses),
+    source: 'dictionary',
     updatedAt: new Date().toISOString(),
   }
 
@@ -159,39 +181,124 @@ export async function saveEntry(
       set: {
         headword: row.headword,
         ipa: row.ipa,
-        definitions: row.definitions,
-        examples: row.examples,
-        senseSource,
+        senses: row.senses,
+        source: row.source,
         updatedAt: row.updatedAt,
       },
-      where:
-        senseSource === 'model'
-          ? undefined
-          : sql`${dictionaryEntries.senseSource} != 'model'`,
+      where: sql`${dictionaryEntries.source} != 'model'`,
     })
 
-  return (await loadEntry(db, normalized)) ?? row
+  return (await loadEntry(db, normalized)) ?? ({ ...row } as Entry)
 }
 
 /**
- * The entry for a word, defining it first if nobody has yet.
+ * The entry a learner can be shown right now.
  *
- * A word already described by the model is returned untouched — the whole
- * point of the shared table is that the lookup happens once. Dictionary-only
- * senses are worth redoing, because their historical ordering is what made
- * "despite" a noun meaning disdain.
+ * One path for every way a word arrives — saved from the list, tapped in an
+ * article, dealt by the Explore feed. Read what we have; if it is only a
+ * reservation, spend up to three seconds on the free dictionary so the screen
+ * has something on it. What is missing after that is the model's job, and the
+ * caller hands `completeEntry` to `waitUntil` rather than waiting for it.
  */
 export async function ensureEntry(
   db: EntriesDb,
   normalized: string,
-  config: DeepSeekConfig | null,
+  headword = normalized,
 ): Promise<Entry | undefined> {
   const existing = await loadEntry(db, normalized)
-  if (existing && !needsBetterSenses(existing)) return existing
-  // Without a model there is nothing better to fetch than what we already have.
-  if (existing && isDefined(existing) && !config) return existing
+  if (isDefined(existing)) return existing
 
-  const hit = await buildEntry(normalized, config)
-  if (!hit) return existing
-  return saveEntry(db, hit)
+  const hit = await lookupDictionary(normalized).catch((error: unknown) => {
+    console.error('Dictionary lookup failed', normalized, error)
+    return null
+  })
+  if (!hit) return existing ?? (await stubEntry(db, normalized, headword))
+  return saveDictionary(db, normalized, hit)
+}
+
+/**
+ * Fetch a pronunciation for a word that has senses but no IPA.
+ *
+ * The dictionary is the only source of one, and it is also the flakiest thing
+ * here — three seconds is not long, and it rate-limits a burst. A word that
+ * lost that race would otherwise stay silent for good, because once the model
+ * writes its card nothing looks the word up again. The pass calls this; no
+ * request path does, since nobody should wait twice for the same slow host.
+ */
+export async function ensureIpa(db: EntriesDb, normalized: string) {
+  const hit = await lookupDictionary(normalized).catch((error: unknown) => {
+    console.error('Dictionary lookup failed', normalized, error)
+    return null
+  })
+  if (!hit?.ipa) return false
+
+  await db
+    .update(dictionaryEntries)
+    .set({ ipa: hit.ipa })
+    .where(
+      and(
+        eq(dictionaryEntries.normalized, normalized),
+        isNull(dictionaryEntries.ipa),
+      ),
+    )
+  return true
+}
+
+export type WordCardEnv = {
+  CLOUDFLARE_ACCOUNT_ID?: string
+  WORKERS_AI_API_TOKEN?: string
+  WORKERS_AI_MOCK_URL?: string
+}
+
+/**
+ * Give one word the card the model writes: senses in frequency order, each
+ * with its Chinese and an example, plus collocations and family.
+ *
+ * Half a minute of a large model, so no request ever waits on it — the pass
+ * does it ahead of time and `waitUntil` does it for whatever the pass missed.
+ * Returns false when nothing usable came back, which leaves the dictionary
+ * senses in place and the word eligible for the next run.
+ */
+export async function completeEntry(
+  env: WordCardEnv,
+  db: EntriesDb,
+  normalized: string,
+  headword?: string,
+) {
+  const card = await describeWordTwice({
+    headword: headword ?? normalized,
+    level: levelOf(normalized),
+    ...readWorkersAi(env),
+  })
+  if (!card) return false
+
+  await db
+    .update(dictionaryEntries)
+    .set({
+      senses: JSON.stringify(card.senses),
+      collocations: JSON.stringify(card.collocations),
+      family: JSON.stringify(card.family),
+      source: 'model',
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(dictionaryEntries.normalized, normalized))
+  return true
+}
+
+/**
+ * Everything one word needs, in the order a learner notices it missing.
+ *
+ * Handed to `waitUntil` by whichever request first met the word, so it runs
+ * after the response and its cost is bounded by how many new words a person
+ * can meet in a day.
+ */
+export async function fillEntry(
+  env: WordCardEnv,
+  db: EntriesDb,
+  normalized: string,
+  headword?: string,
+) {
+  const entry = await ensureEntry(db, normalized, headword)
+  if (!needsCard(entry)) return
+  await completeEntry(env, db, normalized, entry?.headword ?? headword)
 }

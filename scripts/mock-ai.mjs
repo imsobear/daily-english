@@ -146,10 +146,6 @@ createServer(async (req, res) => {
       JSON.stringify({
         result: {
           response: JSON.stringify({
-            usage: {
-              pattern: `${word} something`,
-              example: `They ${word} something every week.`,
-            },
             senses: [
               {
                 pos: 'noun',

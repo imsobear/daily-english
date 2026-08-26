@@ -38,24 +38,29 @@ learner retired with "Know it", which never comes back.
 
 ## Warming the pool
 
-The Explore feed shows pool words as full cards — definition, IPA, audio, the
-pattern the word lives in, the phrases it goes with — but the pool file carries
-only headwords. Defining one costs a dictionary fetch plus a model call,
-speaking it costs TTS, and writing its card costs twenty seconds of a large
-model. Done on demand that is a feed of blanks, so it is done in advance:
+The Explore feed shows pool words as full cards — senses with their Chinese and
+examples, IPA, audio — but the pool file carries only headwords. Defining one
+costs a dictionary fetch, speaking it costs TTS, and writing its card costs half
+a minute of a large model. Done on demand that is a feed of blanks, so it is
+done in advance:
 
 ```bash
 pnpm exec wrangler workflows trigger vocabulary-prewarm                  # everything
 pnpm exec wrangler workflows trigger vocabulary-prewarm '{"levels":["C1"]}'
 pnpm exec wrangler workflows trigger vocabulary-prewarm '{"speak":false}'
-pnpm exec wrangler workflows trigger vocabulary-prewarm '{"describe":false}'
+pnpm exec wrangler workflows trigger vocabulary-prewarm '{"describe":0}'
 ```
 
 Twenty words per step, skipping anything already defined, spoken and described,
 which makes the run resumable and a repeat run nearly free. The whole pool is
-around 230 steps and several hours: a dollar or two of DeepSeek and OpenAI,
-plus roughly $4 of Workers AI for the cards. All three are shared by every
-learner, so this is paid once. Run it after `pnpm vocab` adds words.
+around 230 steps and several hours, and a dollar or two of OpenAI for the audio.
+
+The cards are rationed separately: a run writes a hundred of them and stops,
+which is most of the free Workers AI allowance for a day and none of a bill. So
+the pass wants running once a day for a while rather than once — each run picks
+up where the last stopped. `'{"describe":500}'` spends past the allowance on
+purpose, at roughly a dollar per thousand cards. Everything here is shared by
+every learner, so it is paid once. Run it after `pnpm vocab` adds words.
 
 The cards come from `@cf/openai/gpt-oss-120b` over the REST API rather than
 through an `ai` binding. The binding has no local implementation, so declaring

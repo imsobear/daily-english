@@ -1,31 +1,24 @@
 import type { CefrLevel } from '#/lib/settings'
 
 /**
- * What a word card says beyond its definition.
+ * Everything the app knows about a word, in one shape.
  *
  * A definition is enough to recognise a word and not nearly enough to use one:
  * knowing that risk is "the chance something bad happens" leaves you no closer
- * to writing "risk factor" or "at risk of". So the model is asked for the
- * things a dictionary buries — the pattern the word lives in, the phrases it
- * keeps company with, the rest of its family — and the answer is kept in the
- * shared entry, written once and read by everyone.
+ * to writing "risk factor" or "at risk of". So a sense carries its own example
+ * and its own Chinese, and the word carries the phrases it keeps company with
+ * and the rest of its family.
  *
- * Every field is optional in practice. A word the pass has not reached yet, or
- * one the model half answered, falls back to the definition and example the
- * entry already had.
+ * The free dictionary fills the same shape with what little it has — senses
+ * with no Chinese — so nothing downstream has to ask where a word came from.
  */
-export type WordUsage = {
-  /** The pattern with its slots showing: "at risk of something". */
-  pattern: string
-  example: string
-}
-
-export type WordSense = {
+export type Sense = {
   pos: string
   definition: string
-  example: string | null
   /** The same definition in Chinese, revealed only when asked for. */
   zh: string | null
+  /** One today. Plural so a second needs no migration. */
+  examples: string[]
 }
 
 export type WordRelative = {
@@ -33,9 +26,8 @@ export type WordRelative = {
   pos: string
 }
 
-export type WordDetail = {
-  usage: WordUsage | null
-  senses: WordSense[]
+export type WordCard = {
+  senses: Sense[]
   collocations: string[]
   family: WordRelative[]
 }
@@ -48,7 +40,7 @@ export type WordDetail = {
  * plausibly rather than correctly. It is also paid for once per word ever, so
  * the price of the best model available is a few dollars for the whole pool.
  */
-export const WORD_DETAIL_MODEL = '@cf/openai/gpt-oss-120b'
+export const WORD_CARD_MODEL = '@cf/openai/gpt-oss-120b'
 
 /**
  * Room for three senses with examples, and then some.
@@ -66,16 +58,14 @@ const MAX_SENSES = 3
 const MAX_COLLOCATIONS = 6
 const MAX_FAMILY = 4
 
-export function wordDetailPrompt(headword: string, level: CefrLevel) {
+export function wordCardPrompt(headword: string, level: CefrLevel) {
   return `You write vocabulary cards for adult Chinese speakers learning English, tagged CEFR ${level}. They read news, essays and fiction, and they are trying to learn to *use* the word, not just recognise it.
 
 Write the card for "${headword}".
 
-usage — the single most useful pattern this word appears in, written as a phrase a learner could read aloud. Ordinary words in the slots: "something", "somebody", "doing something". No plus signs, no blanks, and no grammar shorthand like "V-ing", "sth" or "N". Write "risk doing something", "at risk of something", "comply with something", "tell somebody about something". For an adjective, show the nouns it goes in front of: "a bleak outlook/future/picture". Give one natural sentence using exactly that pattern. This is the line on the front of the card, so pick the pattern a learner most needs.
-
 senses — up to ${MAX_SENSES}, most frequent first. Three fields each:
   "definition", in English: plain English a ${level} learner reads without a dictionary, never defining the word with itself or with a rarer word.
-  "example", in English: one sentence that sounds like real modern writing or speech, in a different context from the other senses and from the usage sentence.
+  "example", in English: one sentence that sounds like real modern writing or speech, in a different context from the other senses.
   "zh", in Chinese: that same definition again, as a dictionary gloss — a phrase, no subject, no full stop. For "risk": "风险，可能发生的坏事". Not a translation of the example, and not word by word off the English.
 The "zh" fields are the only Chinese anywhere in your answer. Writing a definition or an example in Chinese ruins the card.
 
@@ -84,14 +74,14 @@ collocations — the partner words this one really appears with, most frequent f
 family — other words built from the same stem: different parts of speech, not different forms of the same word. "risky" and "riskiness" belong; "risked", "risking", "riskier" do not. Leave the list empty rather than inventing a form nobody writes.
 
 Reply with JSON only:
-{"usage":{"pattern":"...","example":"..."},"senses":[{"pos":"noun","definition":"...","example":"...","zh":"..."}],"collocations":["..."],"family":[{"word":"...","pos":"..."}]}`
+{"senses":[{"pos":"noun","definition":"...","example":"...","zh":"..."}],"collocations":["..."],"family":[{"word":"...","pos":"..."}]}`
 }
 
 /** The shape of the model call, kept here so the tests can read it. */
-export function wordDetailRequest(headword: string, level: CefrLevel) {
+export function wordCardRequest(headword: string, level: CefrLevel) {
   return {
     messages: [
-      { role: 'user' as const, content: wordDetailPrompt(headword, level) },
+      { role: 'user' as const, content: wordCardPrompt(headword, level) },
     ],
     max_tokens: MAX_TOKENS,
     // Low, but not zero: this is writing, and the examples read better with a
@@ -146,18 +136,6 @@ function inflectionsOf(base: string) {
   return forms
 }
 
-/**
- * Grammar notation, where a phrase was asked for.
- *
- * Told twice over to write "risk doing something" rather than "risk + V-ing",
- * the model still reaches for the shorthand every tenth word or so — and a
- * dictionary convention nobody taught the learner is worse than no pattern at
- * all, so the card goes out without one and keeps everything else.
- */
-function isShorthand(pattern: string) {
-  return /\+|\.\.\.|…|_|\[|\bV-ing\b|\bsth\b|\bsb\b|\bN\b/i.test(pattern)
-}
-
 function keepFamily(headword: string, family: WordRelative[]) {
   const bases = [headword.toLowerCase(), ...family.map((item) => item.word)]
   return family.filter((item) => {
@@ -175,10 +153,10 @@ function keepFamily(headword: string, family: WordRelative[]) {
  * senses is no card at all — returning null there means the word keeps whatever
  * the dictionary gave it and the next pass can try again.
  */
-export function parseWordDetail(
+export function parseWordCard(
   headword: string,
   raw: unknown,
-): WordDetail | null {
+): WordCard | null {
   const source =
     typeof raw === 'string' ? tryParse(raw) : ((raw ?? null) as Record<
       string,
@@ -200,22 +178,17 @@ export function parseWordDetail(
         {
           pos: text(sense?.pos, 24) ?? '',
           definition,
-          example: example && !CHINESE.test(example) ? example : null,
           // A gloss belongs beside the definition; a translated example
           // sentence beside it only confuses what is being defined. Told not
           // to, the model does it anyway often enough to be worth catching,
           // and gives itself away every time by ending like a sentence.
           zh: zh && CHINESE.test(zh) && !/[。！？.!?]$/.test(zh) ? zh : null,
+          examples: example && !CHINESE.test(example) ? [example] : [],
         },
       ]
     })
     .slice(0, MAX_SENSES)
   if (senses.length === 0) return null
-
-  const rawUsage = source.usage as Record<string, unknown> | undefined
-  const candidate = text(rawUsage?.pattern, 80)
-  const pattern = candidate && !isShorthand(candidate) ? candidate : null
-  const example = text(rawUsage?.example, 240)
 
   const family = keepFamily(
     headword,
@@ -229,17 +202,13 @@ export function parseWordDetail(
   ).slice(0, MAX_FAMILY)
 
   return {
-    usage: pattern && example ? { pattern, example } : null,
     senses,
     collocations: [
       ...new Set(
         asArray(source.collocations).flatMap((item) => {
           const phrase = text(item, 48)?.toLowerCase()
-          // A single word is not a collocation, it is the word again — and a
-          // phrase the pattern above already shows is a line of the card spent
-          // saying the same thing twice.
-          if (!phrase || !phrase.includes(' ')) return []
-          return phrase === pattern?.toLowerCase() ? [] : [phrase]
+          // A single word is not a collocation, it is the word again.
+          return phrase?.includes(' ') ? [phrase] : []
         }),
       ),
     ].slice(0, MAX_COLLOCATIONS),
@@ -248,8 +217,8 @@ export function parseWordDetail(
 }
 
 /** Whether there is any Chinese to offer, and so any button to offer it with. */
-export function hasChinese(detail: WordDetail | null | undefined) {
-  return Boolean(detail?.senses.some((sense) => sense.zh))
+export function hasChinese(senses: Sense[]) {
+  return senses.some((sense) => sense.zh)
 }
 
 function asArray(value: unknown): unknown[] {
@@ -285,11 +254,11 @@ export async function describeWord(input: {
   accountId: string | null
   apiKey: string | null
   mockUrl: string | null
-}): Promise<WordDetail | null> {
+}): Promise<WordCard | null> {
   const url = input.mockUrl
     ? input.mockUrl
     : input.accountId && input.apiKey
-      ? `https://api.cloudflare.com/client/v4/accounts/${input.accountId}/ai/run/${WORD_DETAIL_MODEL}`
+      ? `https://api.cloudflare.com/client/v4/accounts/${input.accountId}/ai/run/${WORD_CARD_MODEL}`
       : null
   if (!url) return null
 
@@ -301,14 +270,14 @@ export async function describeWord(input: {
         ? { Authorization: `Bearer ${input.apiKey}` }
         : {}),
     },
-    body: JSON.stringify(wordDetailRequest(input.headword, input.level)),
+    body: JSON.stringify(wordCardRequest(input.headword, input.level)),
   })
   if (!response.ok) {
     throw new Error(`Workers AI ${response.status}: ${await response.text()}`)
   }
 
   const body = (await response.json()) as { result?: unknown }
-  return parseWordDetail(input.headword, modelText(body.result ?? body))
+  return parseWordCard(input.headword, modelText(body.result ?? body))
 }
 
 /**
@@ -329,9 +298,9 @@ export async function describeWordTwice(input: {
   mockUrl: string | null
 }) {
   const first = await describeWord(input)
-  if (first && hasChinese(first)) return first
+  if (first && hasChinese(first.senses)) return first
   const second = await describeWord(input)
-  if (second && hasChinese(second)) return second
+  if (second && hasChinese(second.senses)) return second
   return first ?? second
 }
 
@@ -358,16 +327,17 @@ export function modelText(result: unknown): string {
   return typeof content === 'string' ? content : ''
 }
 
-export function serializeWordDetail(detail: WordDetail) {
-  return JSON.stringify(detail)
-}
-
-export function readWordDetail(raw: string | null | undefined) {
-  if (!raw) return null
+/**
+ * Read one of the JSON list columns, giving back an empty list rather than
+ * throwing on anything malformed. A word with a broken column should look like
+ * a word nobody has described yet, not a page that will not render.
+ */
+export function readList<T>(raw: string | null | undefined): T[] {
+  if (!raw) return []
   try {
-    const value = JSON.parse(raw) as WordDetail
-    return value && Array.isArray(value.senses) ? value : null
+    const value = JSON.parse(raw) as unknown
+    return Array.isArray(value) ? (value as T[]) : []
   } catch {
-    return null
+    return []
   }
 }

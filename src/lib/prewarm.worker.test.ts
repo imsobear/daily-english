@@ -3,12 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getDb, getEnv } from '#/db'
 import { dictionaryEntries } from '#/db/schema'
 import { TTS_VOICE } from '#/lib/ai'
+import { entrySenses, loadEntry } from '#/lib/entries'
 import type { LessonEnv } from '#/lib/generate-lesson'
 import { prewarmBatch } from '#/lib/prewarm'
-import { readWordDetail, type WordDetail } from '#/lib/word-detail'
 
-const CARD: WordDetail = {
-  usage: { pattern: 'at thing of something', example: 'A thing of note.' },
+const CARD = {
   senses: [
     { pos: 'noun', definition: 'a thing', example: 'A thing.', zh: '东西' },
   ],
@@ -16,18 +15,24 @@ const CARD: WordDetail = {
   family: [],
 }
 
-async function seed(word: string, detail: WordDetail | null) {
+const DICTIONARY = [
+  { pos: 'noun', definition: 'a thing', zh: null, examples: [] },
+]
+
+async function seed(
+  word: string,
+  options: { carded: boolean; ipa?: string | null },
+) {
   await getDb()
     .insert(dictionaryEntries)
     .values({
       normalized: word,
       headword: word,
-      definitions: JSON.stringify([
-        { partOfSpeech: 'noun', definition: 'a thing' },
-      ]),
-      examples: '[]',
-      senseSource: 'model',
-      detail: detail ? JSON.stringify(detail) : null,
+      ipa: options.ipa === undefined ? '/θɪŋ/' : options.ipa,
+      senses: JSON.stringify(options.carded ? CARD.senses : DICTIONARY),
+      collocations: '[]',
+      family: '[]',
+      source: options.carded ? 'model' : 'dictionary',
       audioKey: `word-audio/${TTS_VOICE}/${word}.mp3`,
       updatedAt: new Date().toISOString(),
     })
@@ -38,11 +43,10 @@ function withModel(answer: unknown) {
   const calls: string[] = []
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string, init?: RequestInit) => {
+    vi.fn(async (url: string) => {
       calls.push(String(url))
       return new Response(JSON.stringify(answer), {
         headers: { 'Content-Type': 'application/json' },
-        status: init ? 200 : 200,
       })
     }),
   )
@@ -60,7 +64,7 @@ afterEach(() => {
 describe('prewarmBatch', () => {
   it('does nothing for a word already defined, spoken and described', async () => {
     const word = `warm${crypto.randomUUID().slice(0, 8)}`
-    await seed(word, CARD)
+    await seed(word, { carded: true })
 
     // No network is reachable for this word's definition, audio or card, so a
     // pass that tried any of them would fail rather than report a clean skip.
@@ -80,31 +84,57 @@ describe('prewarmBatch', () => {
 
   it('writes the card for a word that has none', async () => {
     const word = `warm${crypto.randomUUID().slice(0, 8)}`
-    await seed(word, null)
+    await seed(word, { carded: false })
 
     const { env } = withModel({ response: JSON.stringify(CARD) })
     const tally = await prewarmBatch(env, [word])
 
     expect(tally.described).toBe(1)
-    const row = await getDb().query.dictionaryEntries.findFirst({
-      where: (entries, { eq }) => eq(entries.normalized, word),
-    })
-    expect(readWordDetail(row?.detail)?.usage?.pattern).toBe(
-      'at thing of something',
-    )
+    const entry = await loadEntry(getDb(), word)
+    expect(entry?.source).toBe('model')
+    expect(entrySenses(entry)[0].zh).toBe('东西')
+    expect(entrySenses(entry)[0].examples).toEqual(['A thing.'])
   })
 
   it('counts a model that answers with nonsense as a failure, not a card', async () => {
     const word = `warm${crypto.randomUUID().slice(0, 8)}`
-    await seed(word, null)
+    await seed(word, { carded: false })
 
     const { env } = withModel({ response: 'sorry, no' })
     const tally = await prewarmBatch(env, [word])
 
     expect(tally.described).toBe(0)
-    const row = await getDb().query.dictionaryEntries.findFirst({
-      where: (entries, { eq }) => eq(entries.normalized, word),
-    })
-    expect(row?.detail).toBeNull()
+    const entry = await loadEntry(getDb(), word)
+    expect(entry?.source).toBe('dictionary')
+  })
+
+  it('goes back for a pronunciation the dictionary never gave', async () => {
+    const word = `warm${crypto.randomUUID().slice(0, 8)}`
+    await seed(word, { carded: true, ipa: null })
+
+    const { env, calls } = withModel(null)
+    await prewarmBatch(env, [word])
+
+    // The card is written and nothing re-describes it, so this lookup is the
+    // only chance the word has left of ever being transcribed.
+    expect(calls).toEqual([
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${word}`,
+    ])
+  })
+
+  it('stops describing once the run has spent its budget', async () => {
+    const words = Array.from(
+      { length: 3 },
+      () => `warm${crypto.randomUUID().slice(0, 8)}`,
+    )
+    for (const word of words) await seed(word, { carded: false })
+
+    const { env, calls } = withModel({ response: JSON.stringify(CARD) })
+    const tally = await prewarmBatch(env, words, { describeLimit: 2 })
+
+    // The words left over keep their dictionary senses and are the first ones
+    // tomorrow's run reaches.
+    expect(tally.described).toBe(2)
+    expect(calls).toHaveLength(2)
   })
 })

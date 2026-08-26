@@ -10,7 +10,7 @@ import {
   Spinner,
 } from '#/components/ui'
 import { BROWSE_SOURCES, type BrowseSource } from '#/lib/browse'
-import { hasChinese } from '#/lib/word-detail'
+import { hasChinese } from '#/lib/word-card'
 import {
   getBrowseMore,
   getBrowseStart,
@@ -349,8 +349,7 @@ function WordSlide({
   const [gloss, setGloss] = useState(false)
   const percent =
     card.familiarity != null ? Math.round(card.familiarity * 100) : null
-  const detail = card.detail
-  const chinese = hasChinese(detail)
+  const chinese = hasChinese(card.senses)
   /*
    * Meanings and nothing else. A card is read in a second on the way past, and
    * everything that was competing with the definitions for that second —
@@ -359,18 +358,7 @@ function WordSlide({
    *
    * A snap card cannot scroll either, so only what fits a phone stays on it.
    */
-  const senses = detail
-    ? detail.senses.slice(0, 3).map((sense) => ({
-        partOfSpeech: sense.pos,
-        definition: sense.definition,
-        example: sense.example,
-        zh: sense.zh,
-      }))
-    : card.definitions
-        .slice(0, 3)
-        .map((sense) => ({ ...sense, example: null, zh: null }))
-  // Older entries keep their examples in a list of their own.
-  const samples = detail ? [] : card.examples.slice(0, 2)
+  const senses = card.senses.slice(0, 3)
 
   return (
     <article className="flex h-full snap-start snap-always flex-col overflow-hidden px-4 pt-1 pb-3">
@@ -461,13 +449,13 @@ function WordSlide({
                 <ul className="space-y-2">
                   {senses.map((sense, index) => (
                     <li
-                      key={`${sense.partOfSpeech}-${index}`}
+                      key={`${sense.pos}-${index}`}
                       className="card-soft px-3.5 py-2.5"
                     >
                       <p className="text-[0.9375rem] leading-snug">
-                        {sense.partOfSpeech ? (
+                        {sense.pos ? (
                           <span className="kicker mr-1.5 inline">
-                            {sense.partOfSpeech}{' '}
+                            {sense.pos}{' '}
                           </span>
                         ) : null}
                         <span className="selectable">{sense.definition}</span>
@@ -477,27 +465,15 @@ function WordSlide({
                           {sense.zh}
                         </p>
                       ) : null}
-                      {sense.example ? (
+                      {sense.examples[0] ? (
                         <p className="selectable mt-1 text-sm italic leading-snug text-ink-soft">
-                          {sense.example}
+                          {sense.examples[0]}
                         </p>
                       ) : null}
                     </li>
                   ))}
                 </ul>
               )}
-              {samples.length > 0 ? (
-                <ul className="mt-2.5 space-y-1">
-                  {samples.map((example) => (
-                    <li
-                      key={example}
-                      className="selectable text-sm italic leading-snug text-ink-soft"
-                    >
-                      {example}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
             </div>
           )}
         </div>

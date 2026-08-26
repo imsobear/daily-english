@@ -1,19 +1,9 @@
-import type { DeepSeekConfig } from '#/lib/deepseek'
-
-export type DictionarySense = {
-  partOfSpeech: string
-  definition: string
-}
-
-export type SenseSource = 'model' | 'legacy'
+import type { Sense } from '#/lib/word-card'
 
 export type DictionaryHit = {
   headword: string
   ipa: string | null
-  definitions: DictionarySense[]
-  examples: string[]
-  /** Whether `definitions` are frequency-ordered. Absent for raw API lookups. */
-  senseSource?: SenseSource
+  senses: Sense[]
 }
 
 export type DictionaryApiEntry = {
@@ -39,22 +29,23 @@ const DEAD_SENSE =
   /\b(archaic|obsolete|dated|rare|historical|poetic|no longer in use)\b/i
 
 function usableSenses(entry: DictionaryApiEntry) {
-  const definitions: DictionarySense[] = []
-  const examples: string[] = []
+  const senses: Sense[] = []
 
   for (const meaning of entry.meanings ?? []) {
     for (const item of meaning.definitions ?? []) {
-      if (item.definition && !DEAD_SENSE.test(item.definition)) {
-        definitions.push({
-          partOfSpeech: meaning.partOfSpeech ?? 'unknown',
-          definition: item.definition,
-        })
-      }
-      if (item.example) examples.push(item.example)
+      if (!item.definition || DEAD_SENSE.test(item.definition)) continue
+      senses.push({
+        pos: meaning.partOfSpeech ?? '',
+        definition: item.definition,
+        // The dictionary has no Chinese. The model that replaces these senses
+        // does, which is the difference between a stopgap and a card.
+        zh: null,
+        examples: item.example ? [item.example] : [],
+      })
     }
   }
 
-  return { definitions, examples }
+  return senses
 }
 
 /**
@@ -74,9 +65,14 @@ export function americanIpa(entry: DictionaryApiEntry) {
 }
 
 /**
- * Free dictionary lookup. Used for IPA, which the language model cannot supply
- * reliably. Its recorded audio is deliberately ignored: the media host 502s,
- * and the clips mixed Australian, British and American speakers.
+ * Free dictionary lookup: an IPA, and senses good enough to show while the
+ * model writes better ones. Its recorded audio is deliberately ignored — the
+ * media host 502s, and the clips mixed Australian, British and American
+ * speakers.
+ *
+ * A learner is waiting on this, having just tapped a word, so it gets three
+ * seconds rather than six. Late is the same as missing here: the card renders
+ * from whatever came back, and the model call behind it fixes the rest.
  */
 export async function lookupDictionary(
   headword: string,
@@ -84,7 +80,7 @@ export async function lookupDictionary(
   const encoded = encodeURIComponent(headword)
   const response = await fetch(
     `https://api.dictionaryapi.dev/api/v2/entries/en/${encoded}`,
-    { signal: AbortSignal.timeout(6000) },
+    { signal: AbortSignal.timeout(3000) },
   )
 
   if (response.status === 404) return null
@@ -96,56 +92,14 @@ export async function lookupDictionary(
   const entry = payload[0]
   if (!entry) return null
 
-  const { definitions, examples } = usableSenses(entry)
-  const ipa = americanIpa(entry)
+  const senses = usableSenses(entry)
+  if (senses.length === 0) return null
 
   return {
     headword: entry.word ?? headword,
-    ipa,
-    definitions: definitions.slice(0, 8),
-    examples: examples.slice(0, 5),
-  }
-}
-
-/**
- * Build the entry a learner sees, and that later seeds article generation.
- *
- * The two sources play to their strengths: the free dictionary contributes
- * IPA, while the model contributes definitions ordered by how common each
- * sense actually is today. Falling back to raw dictionary
- * senses is a last resort because their ordering is what produced glosses
- * like "despite: disdain, contemptuous feelings, hatred".
- */
-export async function buildEntry(
-  headword: string,
-  config: DeepSeekConfig | null,
-): Promise<DictionaryHit | null> {
-  const [dictionary, model] = await Promise.all([
-    lookupDictionary(headword).catch((error) => {
-      console.error('Dictionary lookup failed', error)
-      return null
-    }),
-    config
-      ? import('#/lib/ai').then((mod) => mod.defineWord(config, headword))
-      : Promise.resolve(null),
-  ])
-
-  if (!dictionary && !model) return null
-
-  const fromModel = Boolean(model?.definitions?.length)
-  const definitions = fromModel
-    ? model!.definitions
-    : (dictionary?.definitions ?? [])
-  if (definitions.length === 0) return null
-
-  const examples =
-    model?.examples?.length ? model.examples : (dictionary?.examples ?? [])
-
-  return {
-    headword: dictionary?.headword ?? headword,
-    ipa: dictionary?.ipa ?? model?.ipa ?? null,
-    definitions,
-    examples,
-    senseSource: fromModel ? 'model' : 'legacy',
+    ipa: americanIpa(entry),
+    // Three, like the model card, so the stopgap does not turn into a wall of
+    // Wiktionary the moment a word has a long history.
+    senses: senses.slice(0, 3),
   }
 }

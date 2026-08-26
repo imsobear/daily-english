@@ -4,7 +4,6 @@ import {
   readDeepSeekConfig,
   type DeepSeekConfig,
 } from '#/lib/deepseek'
-import type { DictionaryHit, DictionarySense } from '#/lib/dictionary'
 import { countWords, stripPosTags } from '#/lib/text'
 
 export type ArticleDraft = {
@@ -210,67 +209,6 @@ export async function generateArticle(input: {
     })
   }
   return best
-}
-
-export async function defineWord(
-  config: DeepSeekConfig,
-  headword: string,
-): Promise<DictionaryHit | null> {
-  try {
-    const value = await chatJson<{
-      ipa?: string | null
-      definitions?: Array<{ partOfSpeech?: string; definition?: string }>
-      examples?: unknown
-    }>(config, {
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a learner dictionary. Reply with a single JSON object and nothing else. Use simple English a B1 learner can read.',
-        },
-        {
-          role: 'user',
-          content: `Define the English headword "${headword}" for a language learner.
-
-Return: {"ipa":"/.../ or null","definitions":[{"partOfSpeech":"noun","definition":"..."}],"examples":["..."]}
-
-Rules:
-- Order definitions by how common they are in modern everyday English. The most common sense must come first.
-- Skip archaic, obsolete and highly technical senses entirely.
-- 2-4 definitions, each one short sentence.
-- 1-2 natural example sentences.
-- IPA in General American if you are confident, otherwise null.`,
-        },
-      ],
-      maxTokens: 700,
-      temperature: 0.2,
-    })
-
-    const definitions: DictionarySense[] = Array.isArray(value.definitions)
-      ? value.definitions
-          .map((item) => ({
-            partOfSpeech: String(item.partOfSpeech ?? 'unknown'),
-            definition: String(item.definition ?? '').trim(),
-          }))
-          .filter((item) => item.definition.length > 0)
-          .slice(0, 6)
-      : []
-    if (definitions.length === 0) return null
-
-    const examples = Array.isArray(value.examples)
-      ? value.examples.map(String).filter(Boolean).slice(0, 4)
-      : []
-    const ipa = value.ipa ? String(value.ipa) : null
-
-    return {
-      headword,
-      ipa: ipa && ipa !== 'null' ? ipa : null,
-      definitions,
-      examples,
-    }
-  } catch {
-    return null
-  }
 }
 
 /**

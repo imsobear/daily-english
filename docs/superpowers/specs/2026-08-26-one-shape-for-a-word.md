@@ -79,15 +79,20 @@ the same function, `ensureEntry`, in the same three steps:
    given today — because a save that hangs on a third party is worse than a save
    that shows its senses a moment later. On a timeout the row stays `pending`
    and step 3 finishes the job.
-3. **Then complete it in the background.** The same call queues the rest —
-   Workers AI for the real senses with their Chinese, collocations and family,
-   and TTS for the audio — in `waitUntil`. Ten to twenty seconds later the row
-   is upgraded in place.
+3. **Then complete it in the background.** The same call queues Workers AI for
+   the real senses with their Chinese, collocations and family, in `waitUntil`.
+   Half a minute later the row is upgraded in place.
 
 Each step is skipped when the row already carries what it would write, which is
 what `source` records: `model` is complete and nothing re-runs, `dictionary` is
 readable and waiting to be upgraded, `pending` is a reserved row with nothing in
-it yet. Audio is governed the same way by `audio_key`, keyed on the voice.
+it yet.
+
+Audio is not queued here, though the first draft of this said it would be. It is
+the one thing in a word that costs real money per word rather than a share of a
+free allowance, and it is already covered twice over: the word-audio endpoint
+speaks a word the first time anyone plays it, and the pass speaks the pool. A
+word nobody ever plays should not be paid for.
 
 The doors differ in two ways only, both of them the caller's business rather
 than the function's. Saving and a gloss tap ask about one word and wait for step
@@ -107,16 +112,17 @@ cheap, both are already skipped for any word that has them, and audio in
 particular is never regenerated — the key contains the voice, so a word is
 spoken once per voice and never again.
 
-Workers AI is the part with a budget. A card is around 75 neurons and the free
-allocation is 10,000 a day, so the describe phase takes a word limit per run and
-stops when it hits it, resuming where it left off next time. At roughly 130
-words a day the 4,600-word pool takes about five weeks of daily runs — free but
-slow. Paying for it is a one-off of about $4 and a few hours, so the limit is a
-parameter rather than a policy:
+Workers AI is the part with a budget. A card is around ninety neurons and the
+free allocation is 10,000 a day, so the describe phase takes a word limit per
+run and stops when it hits it, resuming where it left off next time. The default
+is a hundred, which is a day of the allowance; the 4,600-word pool then takes
+about six weeks of daily runs — free but slow. Paying for it is a one-off of
+about $4 and a few hours, so the limit is a parameter rather than a policy:
 
 ```bash
-pnpm exec wrangler workflows trigger vocabulary-prewarm '{"describeLimit":130}'
-pnpm exec wrangler workflows trigger vocabulary-prewarm '{"describeLimit":0}'    # dictionary and audio only
+pnpm exec wrangler workflows trigger vocabulary-prewarm                    # 100, the free day
+pnpm exec wrangler workflows trigger vocabulary-prewarm '{"describe":500}'
+pnpm exec wrangler workflows trigger vocabulary-prewarm '{"describe":0}'   # dictionary and audio only
 ```
 
 ## Migration
@@ -140,16 +146,19 @@ carrying a card are the eleven local test words, and everything backfilled as
 
 ## Work
 
-- `src/db/schema.ts`, `drizzle/0014_word_senses.sql`, then `0015_drop_word_legacy.sql`
-- `src/lib/word-detail.ts` — drop `usage`; this becomes the only writer of senses
-- `src/lib/dictionary.ts` — `buildEntry` returns IPA and stopgap senses; the DeepSeek branch goes
-- `src/lib/ai.ts` — delete `defineWord`
-- `src/lib/entries.ts` — one accessor, one `saveSenses`, `ensureEntry` = the three steps above
-- `src/lib/prewarm.ts`, `src/workflows/prewarm.ts` — call the same functions; add `describeLimit`
-- `src/server/words.ts`, `gloss.ts`, `browse.ts` — all three call `ensureEntry` and hand it `waitUntil`
+Everything below is built except the last line.
+
+- `src/db/schema.ts`, `drizzle/0014_word_senses.sql` — the four columns and the backfill
+- `src/lib/word-card.ts` (was `word-detail.ts`) — drop `usage`; the only writer of senses
+- `src/lib/dictionary.ts` — `lookupDictionary` returns IPA and stopgap senses; `buildEntry` goes
+- `src/lib/ai.ts` — `defineWord` deleted
+- `src/lib/entries.ts` — one accessor each, `saveDictionary`, `completeEntry`, `fillEntry`
+- `src/lib/prewarm.ts`, `src/workflows/prewarm.ts` — the shared functions, plus `DESCRIBE_BUDGET`
+- `src/server/words.ts`, `gloss.ts`, `browse.ts` — `ensureEntry` in the request, `fillEntry` in `waitUntil`
 - `src/server/lessons.ts`, `src/lib/generate-lesson.ts` — read the one accessor
-- `src/routes/_app/explore.tsx`, `words/$wordId.tsx` — drop the fallback fork
-- `scripts/mock-ai.mjs`, the four test suites, and `docs/agents/word-data.md`
+- `src/routes/_app/explore.tsx`, `words/$wordId.tsx` — the fallback fork is gone
+- `scripts/mock-ai.mjs`, the test suites, `docs/agents/word-data.md`, `data-deploy.md`
+- **Still to come:** `0015_drop_word_legacy.sql`, once this is deployed
 
 ## What this closes
 
