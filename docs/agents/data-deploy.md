@@ -76,21 +76,28 @@ produce.
 
 ## Shipping a change
 
-Pushing to `main` is the deploy. GitHub Actions runs `pnpm check`, and only if
-that passes does it apply pending migrations and put the Worker live. There is
-no separate deploy command to remember and no way to ship something that does
-not build.
+Merging a pull request is the deploy. `main` is protected, so there is no other
+way in — not for a fork, not for the maintainer:
 
 ```bash
 pnpm check          # the same thing CI runs, so find out here rather than there
-git push origin main
-gh run watch        # or just wait; a failed run means nothing was deployed
+git switch -c feat/thing && git push -u origin HEAD
+gh pr create --fill
+gh pr merge --auto --squash   # lands and deploys itself once CI is green
 ```
 
-This section is otherwise for the maintainer of
-[english.readish.app](https://english.readish.app). Contributing from a fork,
-open a pull request: CI checks it, and the deploy steps are skipped because
-they are fenced to this repository and need a token a fork cannot read.
+The merge commit runs the workflow again, and its last step applies pending
+migrations and puts the Worker live. Checking the merged result rather than
+trusting the branch run costs forty seconds and is the whole point: what
+deployed is what was tested.
+
+A commit that only touched `*.md`, `docs/` or `LICENSE` skips the upload. The
+test is one-sided on purpose — anything it does not recognise deploys — because
+a needless deploy costs half a minute and a missed one is a bug hunt. `public/`
+is not on the list; those files are served by the Worker.
+
+Contributing from a fork, the deploy step is skipped twice over: it is fenced to
+this repository and needs a token a fork cannot read.
 
 Migrations run before the upload, so the deployed code never meets a schema
 that is missing its columns. Additive ones are safe to apply ahead of the code
@@ -98,7 +105,9 @@ because the running Worker ignores them. Destructive ones are not; see below.
 
 A deploy by hand is still there for an emergency — `pnpm deploy` builds and
 uploads from your machine — but it skips the checks, so the next CI run is what
-decides whether what you shipped was any good.
+decides whether what you shipped was any good. To undo one, `wrangler rollback`
+puts the previous version back immediately; the git revert can follow through a
+pull request like everything else.
 
 ## Deploying a destructive change
 
@@ -113,9 +122,9 @@ and the schema disagree. Split it:
    the old columns.
 
 Because the apply command takes everything pending, the three steps are three
-pushes rather than a sequence of commands: commit the additive migration with
-the code that tolerates both shapes, push and let it deploy, then commit the
-destructive migration on its own and push again.
+pull requests rather than a sequence of commands: merge the additive migration
+with the code that tolerates both shapes, let it deploy, then send the
+destructive migration on its own.
 
 `drizzle/0007_shared_dictionary_entries.sql` and `0008_words_drop_copied_columns.sql`
 are a worked example of the pattern.
