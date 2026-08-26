@@ -5,7 +5,6 @@ import {
   ChevronRight,
   Flame,
   Plus,
-  Trash2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -21,7 +20,6 @@ import { shiftDate } from '#/lib/day'
 import { getHomeSnapshot } from '#/server/home'
 import {
   createLesson,
-  deleteLesson,
   retryLesson,
   type LessonSummary,
 } from '#/server/lessons'
@@ -125,20 +123,6 @@ function HomePage() {
       })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not retry lesson')
-      setPending(false)
-    }
-  }
-
-  async function onDelete(lessonId: string) {
-    if (!window.confirm('Delete this lesson?')) return
-    setPending(true)
-    setError(null)
-    try {
-      await deleteLesson({ data: { lessonId } })
-      await router.invalidate()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not delete lesson')
-    } finally {
       setPending(false)
     }
   }
@@ -352,25 +336,15 @@ function HomePage() {
                               {lesson.failureReason ??
                                 'This lesson could not be written.'}
                             </p>
-                            <div className="mt-2 flex gap-2">
-                              <Button
-                                size="sm"
-                                className="flex-1"
-                                disabled={pending}
-                                onClick={() => onRetry(lesson.id)}
-                              >
-                                Retry
-                              </Button>
-                              <Button
-                                tone="neutral"
-                                size="sm"
-                                disabled={pending}
-                                onClick={() => onDelete(lesson.id)}
-                                aria-label="Delete lesson"
-                              >
-                                <Trash2 className="size-4" />
-                              </Button>
-                            </div>
+                            <Button
+                              size="sm"
+                              block
+                              className="mt-2"
+                              disabled={pending}
+                              onClick={() => onRetry(lesson.id)}
+                            >
+                              Retry
+                            </Button>
                           </div>
                         ) : null}
                       </li>

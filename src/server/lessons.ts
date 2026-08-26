@@ -550,13 +550,6 @@ export async function todaysUnfinishedLesson(
   )
 }
 
-async function removeLesson(lessonId: string) {
-  const db = getDb()
-  await clearArticles(lessonId)
-  await db.delete(lessonWords).where(eq(lessonWords.lessonId, lessonId))
-  await db.delete(lessons).where(eq(lessons.id, lessonId))
-}
-
 export const createLesson = createServerFn({ method: 'POST' })
   .validator((data: { replace?: boolean }) => data)
   .handler(async ({ data }) => {
@@ -765,20 +758,6 @@ export const retryLessonAudio = createServerFn({ method: 'POST' })
     return { note: spoken.note }
   })
 
-export const deleteLesson = createServerFn({ method: 'POST' })
-  .validator((data: { lessonId: string }) => data)
-  .handler(async ({ data }) => {
-    const user = await requireUser()
-    const db = getDb()
-    const lesson = await db.query.lessons.findFirst({
-      where: and(eq(lessons.id, data.lessonId), eq(lessons.userId, user.id)),
-    })
-    if (!lesson) throw new Error('Lesson not found')
-
-    await removeLesson(lesson.id)
-    return { ok: true }
-  })
-
 /**
  * A lesson's step timestamps in the order they are worked through: hear it in
  * parts, read it, listen again to the whole article, then recall the words.
@@ -905,29 +884,3 @@ export const completeStep = createServerFn({ method: 'POST' })
     return loadDetail(user.id, lesson.id, { suggest: allDone })
   })
 
-export const restartLesson = createServerFn({ method: 'POST' })
-  .validator((data: { lessonId: string }) => data)
-  .handler(async ({ data }) => {
-    const user = await requireUser()
-    const db = getDb()
-    const lesson = await db.query.lessons.findFirst({
-      where: and(eq(lessons.id, data.lessonId), eq(lessons.userId, user.id)),
-    })
-    if (!lesson) throw new Error('Lesson not found')
-
-    await db
-      .update(lessonArticles)
-      .set({
-        stepBlindListenAt: null,
-        stepListenReadAt: null,
-        stepFullListenAt: null,
-        stepExplainAt: null,
-      })
-      .where(eq(lessonArticles.lessonId, lesson.id))
-    await db
-      .update(lessons)
-      .set({ status: 'ready', startedAt: null, completedAt: null })
-      .where(eq(lessons.id, lesson.id))
-
-    return loadDetail(user.id, lesson.id)
-  })

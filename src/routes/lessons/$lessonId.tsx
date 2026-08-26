@@ -15,7 +15,6 @@ import {
   Plus,
   RefreshCw,
   Sparkles,
-  Trash2,
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -30,9 +29,7 @@ import { baseForm, findSentenceWith, wordPattern } from '#/lib/text'
 import { cn } from '#/lib/utils'
 import {
   completeStep,
-  deleteLesson,
   getLesson,
-  restartLesson,
   retryLesson,
   retryLessonAudio,
   type LessonArticle,
@@ -232,17 +229,6 @@ function LessonPage() {
     }
   }
 
-  async function onRestart() {
-    setPending(true)
-    try {
-      await restartLesson({ data: { lessonId: lesson.id } })
-      await router.invalidate()
-      await go(0)
-    } finally {
-      setPending(false)
-    }
-  }
-
   async function onRetry() {
     setPending(true)
     setError(null)
@@ -251,17 +237,6 @@ function LessonPage() {
       await router.invalidate()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not retry')
-    } finally {
-      setPending(false)
-    }
-  }
-
-  async function onDelete() {
-    if (!window.confirm('Delete this lesson?')) return
-    setPending(true)
-    try {
-      await deleteLesson({ data: { lessonId: lesson.id } })
-      await router.navigate({ to: '/' })
     } finally {
       setPending(false)
     }
@@ -405,9 +380,6 @@ function LessonPage() {
           <Button block size="lg" disabled={pending} onClick={onRetry}>
             {pending ? 'Retrying…' : 'Try again'}
           </Button>
-          <Button tone="neutral" block disabled={pending} onClick={onDelete}>
-            Delete lesson
-          </Button>
         </main>
       </Shell>
     )
@@ -484,31 +456,7 @@ function LessonPage() {
       : 0
 
   return (
-    <Shell
-      title={article.title}
-      extra={
-        <>
-          {/* The only way out of a lesson you do not want: home keeps
-              pointing here until this one is finished or gone. */}
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={pending}
-            aria-label="Delete lesson"
-            className="grid size-11 shrink-0 place-items-center rounded-full text-ink-soft active:bg-surface-sunk"
-          >
-            <Trash2 className="size-5" />
-          </button>
-          <button
-            type="button"
-            onClick={onRestart}
-            className="px-3 text-sm font-bold text-ink-soft"
-          >
-            Restart
-          </button>
-        </>
-      }
-    >
+    <Shell title={article.title}>
       <ol className="grid grid-cols-4 gap-1.5 px-3.5 pt-2.5">
         {STEPS.map((item) => {
           const locked = item.id > unlocked
@@ -998,15 +946,7 @@ function formatElapsed(seconds: number) {
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }
 
-function Shell({
-  title,
-  extra,
-  children,
-}: {
-  title: string
-  extra?: ReactNode
-  children: ReactNode
-}) {
+function Shell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="safe-top sticky top-0 z-20 flex items-center gap-1 border-b border-hairline bg-page/85 px-2 pb-2 backdrop-blur-xl">
@@ -1021,7 +961,6 @@ function Shell({
           <p className="kicker">Lesson</p>
           <h1 className="truncate font-extrabold leading-tight">{title}</h1>
         </div>
-        {extra}
       </header>
       {children}
     </div>
