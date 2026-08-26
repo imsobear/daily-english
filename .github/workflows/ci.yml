@@ -5,11 +5,21 @@ on:
     branches: [main]
   pull_request:
 
+# One run at a time per branch. A superseded pull request run is worth nothing,
+# but two deploys racing to the same Worker are worth less than nothing: the
+# loser is what stays live.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The parent commit, so the deploy step can see what changed.
+          fetch-depth: 2
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -21,10 +31,16 @@ jobs:
       - run: pnpm run build
 
       # Shipping, and only because everything above passed. Fenced to this
-      # repository so a fork checks the code and stops there, and quiet about
-      # it when no token is configured. Migrations go first, so the new code
-      # never meets a schema missing its columns. The build is still on disk,
-      # so the upload does not repeat it.
+      # repository so a fork checks the code and stops there, and quiet about it
+      # when no token is configured. Migrations go first, so the new code never
+      # meets a schema missing its columns. The build is still on disk, so the
+      # upload does not repeat it.
+      #
+      # A commit that only touched prose does not need a Worker. The test is
+      # deliberately one-sided: it skips only when every changed path is one we
+      # know the Worker never serves, so an unfamiliar path — or no answer at
+      # all from git — deploys. `public/` is not on that list; those files are
+      # served.
       - name: Deploy
         if: github.ref == 'refs/heads/main' && github.repository == 'imsobear/daily-english'
         env:
@@ -34,6 +50,12 @@ jobs:
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "No CLOUDFLARE_API_TOKEN secret set, so nothing was deployed."
+            exit 0
+          fi
+          changed=$(git diff --name-only HEAD^ HEAD || true)
+          if ! echo "$changed" | grep -qvE '^(docs/|[^/]*\.md$|LICENSE$)'; then
+            echo "Prose only, so the Worker stays as it is:"
+            echo "$changed"
             exit 0
           fi
           pnpm exec wrangler d1 migrations apply english-lessons --remote

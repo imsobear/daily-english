@@ -13,11 +13,11 @@ Cloudflare Workers (D1, R2), live at
   See [local development](docs/agents/local-dev.md).
 - `pnpm check` runs typecheck, every test suite and the build. It is what CI
   runs, so run it before saying work is done.
-- **Pushing to `main` deploys.** CI runs `pnpm check` and ships the Worker only
-  if it passes, so `pnpm check` locally first and push when it is green.
-- **Do not push to `main` from a fork.** The production site at
-  english.readish.app is operated by the maintainer; contributors open a pull
-  request. See [data and deploys](docs/agents/data-deploy.md).
+- **Work on a branch and open a pull request.** `main` is protected and takes
+  nothing pushed straight at it, the maintainer included.
+- **Merging is the deploy.** CI checks the merge and ships the Worker only if it
+  passes, so run `pnpm check` first and let `gh pr merge --auto --squash` land it
+  when it goes green. See [data and deploys](docs/agents/data-deploy.md).
 
 | Topic                                       | Read when                                      |
 | ------------------------------------------- | ---------------------------------------------- |
