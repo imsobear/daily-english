@@ -96,6 +96,15 @@ test is one-sided on purpose — anything it does not recognise deploys — beca
 a needless deploy costs half a minute and a missed one is a bug hunt. `public/`
 is not on the list; those files are served by the Worker.
 
+Whatever happens next arrives by email, sent from `deploys@readish.app` through
+Cloudflare Email Sending — the same account that just deployed, so there is no
+third party holding a key. A successful one carries the commit, the Cloudflare
+version id and the rollback command; a failed run says production was left
+alone. Two repository secrets drive it: `DEPLOY_EMAIL_TO` for the recipient, and
+the deploy token, which needs the **Email Sending** permission on top of
+Workers and D1. Mail that will not send is logged and forgiven, because a
+deploy that worked did not stop working when the news about it got lost.
+
 Contributing from a fork, the deploy step is skipped twice over: it is fenced to
 this repository and needs a token a fork cannot read.
 
