@@ -33,23 +33,44 @@ const LABELS: Record<BrowseSource, string> = {
 /** What the learner has just done to a card, before the feed is rebuilt. */
 type Mark = 'saved' | 'known'
 
+/**
+ * How long the feed waits after the last scroll before speaking.
+ *
+ * Long enough for a snap to finish and for a flick through several cards to
+ * count as one arrival, short enough that a card sitting still in front of
+ * someone does not feel like it is thinking about it.
+ */
+const SETTLE_MS = 180
+
 function ExploreScreen() {
   const start = Route.useLoaderData()
   const [source, setSource] = useState<BrowseSource>(start.source)
   const [cards, setCards] = useState<BrowseCard[]>(start.cards)
   const [cursor, setCursor] = useState(start.mineCursor)
+  const [seed, setSeed] = useState(start.seed)
   const [end, setEnd] = useState(start.end)
   const [busy, setBusy] = useState(false)
   const [marks, setMarks] = useState<Record<string, Mark>>({})
 
   const scroller = useRef<HTMLDivElement>(null)
   const audio = useRef<HTMLAudioElement | null>(null)
+  const started = useRef(false)
+  const settling = useRef(0)
   // Read inside the scroll handler, which must not be rebuilt on every card.
-  const state = useRef({ cards, cursor, end, busy, source, active: 0 })
-  state.current = { cards, cursor, end, busy, source, active: state.current.active }
+  const state = useRef({ cards, cursor, seed, end, busy, source, active: 0 })
+  state.current = {
+    cards,
+    cursor,
+    seed,
+    end,
+    busy,
+    source,
+    active: state.current.active,
+  }
 
   useEffect(() => {
     return () => {
+      window.clearTimeout(settling.current)
       audio.current?.pause()
       audio.current = null
     }
@@ -61,10 +82,11 @@ function ExploreScreen() {
     setBusy(true)
     try {
       const page = await getBrowseMore({
-        data: { source: now.source, mineCursor: now.cursor },
+        data: { source: now.source, mineCursor: now.cursor, seed: now.seed },
       })
       setCards((previous) => [...previous, ...page.cards])
       setCursor(page.mineCursor)
+      setSeed(page.seed)
       setEnd(page.end || page.cards.length === 0)
     } catch {
       // A failed page is a pause, not a dead end: the next scroll asks again.
@@ -78,14 +100,36 @@ function ExploreScreen() {
     const href = new URL(card.audioUrl, location.href).href
     if (element.src !== href) element.src = href
     element.currentTime = 0
+    element.muted = false
     void element.play().catch(() => undefined)
+  }
+
+  /*
+   * A card arrived at should say itself, and on a phone that means asking
+   * permission first: iOS refuses to let a script start an element nobody has
+   * ever started by hand, and a scroll is not that. The touch beginning the
+   * scroll is, so the element is started muted there and stopped on the spot —
+   * silent, and enough to let the feed speak for itself afterwards. Where the
+   * trick fails the fallback is only that the first tap on a speaker does the
+   * unlocking instead.
+   */
+  function arm() {
+    if (started.current) return
+    started.current = true
+    const card = state.current.cards[state.current.active]
+    if (!card) return
+    const element = (audio.current ??= new Audio())
+    element.src = new URL(card.audioUrl, location.href).href
+    element.muted = true
+    void element.play().catch(() => undefined)
+    element.pause()
   }
 
   /*
    * Every card is exactly one viewport tall, so where we are in the feed is
    * arithmetic rather than a stack of observers. The next card's audio is
-   * warmed on arrival: the endpoint synthesises on first play, and a learner
-   * who taps the speaker should not wait for that.
+   * warmed on arrival: the endpoint synthesises on first play, and nobody
+   * should wait for that.
    */
   function onScroll() {
     const element = scroller.current
@@ -93,6 +137,13 @@ function ExploreScreen() {
     const index = Math.round(element.scrollTop / element.clientHeight)
     if (index !== state.current.active) {
       state.current.active = index
+      const card = state.current.cards[index]
+      // A flick past four cards should speak the one it lands on, not all
+      // four, so the word waits for the scrolling to stop.
+      window.clearTimeout(settling.current)
+      if (card) {
+        settling.current = window.setTimeout(() => speak(card), SETTLE_MS)
+      }
       const next = state.current.cards[index + 1]
       if (next) void fetch(next.audioUrl).catch(() => undefined)
     }
@@ -105,11 +156,17 @@ function ExploreScreen() {
     setBusy(true)
     void setBrowseSource({ data: { source: next } }).catch(() => undefined)
     try {
-      const page = await getBrowseMore({ data: { source: next, mineCursor: 0 } })
+      // Seed zero: a different feed deserves a fresh order rather than this
+      // one's, and there is no page of it yet to stay consistent with.
+      const page = await getBrowseMore({
+        data: { source: next, mineCursor: 0, seed: 0 },
+      })
       setCards(page.cards)
       setCursor(page.mineCursor)
+      setSeed(page.seed)
       setEnd(page.end)
       state.current.active = 0
+      window.clearTimeout(settling.current)
       scroller.current?.scrollTo({ top: 0 })
     } catch {
       // Leave the old feed up rather than blanking the screen.
@@ -232,6 +289,8 @@ function ExploreScreen() {
         <div
           ref={scroller}
           onScroll={onScroll}
+          onTouchStart={arm}
+          onMouseDown={arm}
           className="min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto overscroll-contain"
         >
           {cards.map((card, index) => (

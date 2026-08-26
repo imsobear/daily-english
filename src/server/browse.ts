@@ -6,7 +6,9 @@ import { userSettings, wordOffers, words } from '#/db/schema'
 import { TTS_VOICE } from '#/lib/ai'
 import {
   asBrowseSource,
+  makeSeed,
   mineShare,
+  seeded,
   weave,
   type BrowseSource,
 } from '#/lib/browse'
@@ -49,6 +51,8 @@ export type BrowsePage = {
   cards: BrowseCard[]
   /** Where the next page should resume in the learner's own list. */
   mineCursor: number
+  /** The order this visit is using. Hand it back to keep the same one. */
+  seed: number
   /** Neither source has anything more to give. */
   end: boolean
 }
@@ -131,27 +135,49 @@ function atLevel(normalized: string, level: CefrLevel) {
 }
 
 /**
- * The learner's own words at this level, shakiest first and wrapping at the
- * end.
+ * Shuffle a visit's worth of saved words, shakiest likeliest to come first.
  *
- * Familiarity ascending puts the words they are losing at the front, and a
- * feed with no end has to come back round eventually — an idle scroll through
- * forty saved words should keep working at card two hundred. The level filter
- * happens here rather than in SQL because only the pool file knows what level
- * a word is; the `words` table just has headwords.
+ * A fixed list read in a fixed order is the same scroll every time, and an
+ * idle browse is worth nothing if the learner can predict card three. Adding
+ * a random number to the familiarity keeps some of the old intent — a word
+ * they are losing still beats one they have nearly learned most of the time —
+ * while leaving the twenty words they have never studied in a different order
+ * on every arrival, since they all sit at zero and the draw decides alone.
+ */
+function shuffled<T extends { familiarity: number | null }>(
+  rows: T[],
+  random: () => number,
+) {
+  return rows
+    .map((row) => ({ row, key: (row.familiarity ?? 0) + random() }))
+    .sort((a, b) => a.key - b.key)
+    .map((item) => item.row)
+}
+
+/**
+ * The learner's own words at this level, in this visit's order and wrapping at
+ * the end.
+ *
+ * A feed with no end has to come back round eventually — an idle scroll
+ * through forty saved words should keep working at card two hundred. The level
+ * filter happens here rather than in SQL because only the pool file knows what
+ * level a word is; the `words` table just has headwords.
  */
 async function mineCards(
   userId: string,
   level: CefrLevel,
   cursor: number,
   wanted: number,
+  random: () => number,
 ) {
   const db = getDb()
   if (wanted <= 0) return { cards: [] as BrowseCard[], cursor, exhausted: true }
 
   const rows = await db.query.words.findMany({
     where: eq(words.userId, userId),
-    orderBy: [asc(words.familiarity), asc(words.createdAt)],
+    // Fixed, so that the shuffle below is the only thing deciding the order
+    // and the same seed reads the same list on the next page.
+    orderBy: [asc(words.createdAt), asc(words.id)],
     columns: {
       id: true,
       headword: true,
@@ -160,7 +186,10 @@ async function mineCards(
       source: true,
     },
   })
-  const eligible = rows.filter((row) => atLevel(row.normalized, level))
+  const eligible = shuffled(
+    rows.filter((row) => atLevel(row.normalized, level)),
+    random,
+  )
   if (eligible.length === 0) {
     return { cards: [] as BrowseCard[], cursor: 0, exhausted: true }
   }
@@ -337,15 +366,31 @@ export async function browsePageFor(input: {
   source: BrowseSource
   level: CefrLevel
   mineCursor: number
+  /** The visit's order. Zero, or nothing, starts a new one. */
+  seed?: number
 }): Promise<BrowsePage> {
+  /*
+   * Only the learner's own words need the seed. The pool side draws afresh
+   * every time and records what it showed, so it is already different on every
+   * page and every visit without being told to be.
+   */
+  const seed = input.seed && input.seed > 0 ? input.seed : makeSeed()
+  const random = seeded(seed)
+
   if (input.source === 'mine') {
     const mine = await mineCards(
       input.userId,
       input.level,
       input.mineCursor,
       PAGE,
+      random,
     )
-    return { cards: mine.cards, mineCursor: mine.cursor, end: mine.exhausted }
+    return {
+      cards: mine.cards,
+      mineCursor: mine.cursor,
+      seed,
+      end: mine.exhausted,
+    }
   }
 
   if (input.source === 'new') {
@@ -353,6 +398,7 @@ export async function browsePageFor(input: {
     return {
       cards: fresh.cards,
       mineCursor: input.mineCursor,
+      seed,
       end: fresh.exhausted,
     }
   }
@@ -368,6 +414,7 @@ export async function browsePageFor(input: {
     input.level,
     input.mineCursor,
     mineShare(PAGE),
+    random,
   )
   const fresh = await freshCards(
     input.userId,
@@ -378,12 +425,21 @@ export async function browsePageFor(input: {
   const short = PAGE - mine.cards.length - fresh.cards.length
   const extra =
     short > 0 && !mine.exhausted
-      ? await mineCards(input.userId, input.level, mine.cursor, short)
+      ? // The same seed, so this reads on from where the first call stopped
+        // rather than reshuffling into words it has just handed over.
+        await mineCards(
+          input.userId,
+          input.level,
+          mine.cursor,
+          short,
+          seeded(seed),
+        )
       : { cards: [] as BrowseCard[], cursor: mine.cursor, exhausted: true }
 
   return {
     cards: weave(fresh.cards, [...mine.cards, ...extra.cards]),
     mineCursor: extra.cursor,
+    seed,
     end: mine.exhausted && fresh.exhausted,
   }
 }
@@ -446,9 +502,11 @@ async function levelHint(userId: string, level: CefrLevel) {
 }
 
 export const getBrowseMore = createServerFn({ method: 'POST' })
-  .validator((data: { source: string; mineCursor: number }) => ({
+  .validator((data: { source: string; mineCursor: number; seed?: number }) => ({
     source: asBrowseSource(data.source),
     mineCursor: Math.max(0, Math.floor(data.mineCursor) || 0),
+    // Zero asks for a new order, which is what switching source wants.
+    seed: Math.max(0, Math.floor(data.seed ?? 0) || 0),
   }))
   .handler(async ({ data }): Promise<BrowsePage> => {
     const user = await requireUser()
@@ -458,6 +516,7 @@ export const getBrowseMore = createServerFn({ method: 'POST' })
       source: data.source,
       level: settings.cefrLevel,
       mineCursor: data.mineCursor,
+      seed: data.seed,
     })
   })
 
