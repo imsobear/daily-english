@@ -19,6 +19,7 @@ import {
 } from '#/lib/dictionary'
 import {
   ensureEntry,
+  entryDetail,
   entryExamples,
   entrySenses,
   loadEntries,
@@ -28,6 +29,7 @@ import {
 import { requireUser } from '#/lib/session'
 import { CEFR_LEVELS, type CefrLevel } from '#/lib/settings'
 import { pickRecommendations, poolEntry } from '#/lib/vocabulary'
+import type { WordDetail } from '#/lib/word-detail'
 import { readSettings } from '#/server/settings'
 
 export type BrowseCard = {
@@ -38,6 +40,8 @@ export type BrowseCard = {
   level: CefrLevel | null
   definitions: DictionarySense[]
   examples: string[]
+  /** The fuller card, once the pre-warm pass has written one. */
+  detail: WordDetail | null
   /** Set when this is already one of the learner's words. */
   wordId: string | null
   familiarity: number | null
@@ -115,6 +119,7 @@ function cardOf(input: {
     level: input.level,
     definitions,
     examples: entryExamples(input.entry),
+    detail: entryDetail(input.entry),
     wordId: input.wordId ?? null,
     familiarity: input.familiarity ?? null,
     source: input.source ?? null,

@@ -18,6 +18,7 @@ function WordCardPage() {
   const word = Route.useLoaderData()
   const router = useRouter()
   const [pending, setPending] = useState(false)
+  const [gloss, setGloss] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const [speaking, setSpeaking] = useState(false)
@@ -65,6 +66,21 @@ function WordCardPage() {
   }
 
   const percent = Math.round(word.familiarity * 100)
+  const detail = word.detail
+  /*
+   * The written card carries an example inside each sense, which is where an
+   * example belongs. Words the pre-warm pass has not reached keep the older
+   * arrangement — a list of senses and a separate list of sentences — so both
+   * are rendered, and only one of them ever has anything in it.
+   */
+  const meanings = detail
+    ? detail.senses.map((sense) => ({
+        partOfSpeech: sense.pos,
+        definition: sense.definition,
+        example: sense.example,
+      }))
+    : word.definitions.map((sense) => ({ ...sense, example: null }))
+  const legacyExamples = detail ? [] : word.examples
 
   return (
     <div className="flex min-h-full flex-col">
@@ -155,10 +171,24 @@ function WordCardPage() {
           </Card>
         ) : (
           <>
+            {detail?.usage ? (
+              <section>
+                <h3 className="kicker mb-2 px-1">Used as</h3>
+                <div className="card-soft px-4 py-3">
+                  <p className="text-[1.0625rem] font-extrabold leading-relaxed">
+                    {detail.usage.pattern}
+                  </p>
+                  <p className="mt-1 text-[1.0625rem] italic leading-relaxed text-ink-soft">
+                    {detail.usage.example}
+                  </p>
+                </div>
+              </section>
+            ) : null}
+
             <section>
               <h3 className="kicker mb-2 px-1">Meanings</h3>
               <ul className="space-y-2">
-                {word.definitions.map((sense, index) => (
+                {meanings.map((sense, index) => (
                   <li
                     key={`${sense.partOfSpeech}-${index}`}
                     className="card-soft px-4 py-3"
@@ -167,16 +197,75 @@ function WordCardPage() {
                     <p className="mt-1 text-[1.0625rem] leading-relaxed">
                       {sense.definition}
                     </p>
+                    {sense.example ? (
+                      <p className="mt-1.5 text-[1rem] italic leading-relaxed text-ink-soft">
+                        {sense.example}
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
             </section>
 
-            {word.examples.length > 0 ? (
+            {detail && detail.collocations.length > 0 ? (
+              <section>
+                <h3 className="kicker mb-2 px-1">Goes with</h3>
+                <ul className="flex flex-wrap gap-2">
+                  {detail.collocations.map((phrase) => (
+                    <li
+                      key={phrase}
+                      className="rounded-full border border-hairline px-3 py-1.5 text-[0.9375rem] font-bold text-ink-soft"
+                    >
+                      {phrase}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {detail && detail.family.length > 0 ? (
+              <section>
+                <h3 className="kicker mb-2 px-1">Same family</h3>
+                <ul className="space-y-1.5">
+                  {detail.family.map((relative) => (
+                    <li
+                      key={relative.word}
+                      className="flex items-baseline gap-2 rounded-2xl bg-surface-sunk px-4 py-2.5"
+                    >
+                      <span className="text-[1.0625rem] font-bold">
+                        {relative.word}
+                      </span>
+                      <span className="kicker">{relative.pos}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {/*
+              Behind a tap, like on the feed: the English is the exercise, and
+              a translation in plain sight is the only thing that gets read.
+            */}
+            {detail?.zh ? (
+              <section>
+                <h3 className="kicker mb-2 px-1">中文</h3>
+                {gloss ? (
+                  <p className="rounded-2xl bg-surface-sunk px-4 py-3 text-[1.0625rem] leading-relaxed">
+                    {detail.zh}
+                  </p>
+                ) : (
+                  <Button tone="neutral" size="sm" onClick={() => setGloss(true)}>
+                    Show the Chinese
+                  </Button>
+                )}
+              </section>
+            ) : null}
+
+            {legacyExamples.length > 0 ? (
               <section>
                 <h3 className="kicker mb-2 px-1">In use</h3>
                 <ul className="space-y-2">
-                  {word.examples.map((example) => (
+                  {legacyExamples.map((example) => (
                     <li
                       key={example}
                       className="rounded-2xl bg-surface-sunk px-4 py-3 text-[1.0625rem] italic leading-relaxed text-ink-soft"

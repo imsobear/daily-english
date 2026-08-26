@@ -19,10 +19,12 @@ export type PrewarmWorkflowParams = {
   levels?: CefrLevel[]
   /** Set false to fill in definitions only and skip the TTS bill. */
   speak?: boolean
+  /** Set false to skip the Workers AI pass that writes the cards. */
+  describe?: boolean
 }
 
 /**
- * Define and speak the vocabulary pool, one batch per step.
+ * Define, speak and describe the vocabulary pool, one batch per step.
  *
  * Triggered by hand rather than on a schedule — the pool changes when someone
  * rebuilds it, which is a decision, not an event:
@@ -41,6 +43,7 @@ export class PrewarmWorkflow extends WorkflowEntrypoint<
       ? event.payload.levels.filter((level) => CEFR_LEVELS.includes(level))
       : [...CEFR_LEVELS]
     const speak = event.payload?.speak ?? true
+    const describe = event.payload?.describe ?? true
 
     let total: PrewarmTally = EMPTY_TALLY
     let done = 0
@@ -52,7 +55,7 @@ export class PrewarmWorkflow extends WorkflowEntrypoint<
         // that needs a moment, and every finished word is skipped on the way
         // back through, so a retry is cheap.
         { retries: { limit: 3, delay: '15 seconds', backoff: 'exponential' } },
-        () => prewarmBatch(this.env, batch.words, { speak }),
+        () => prewarmBatch(this.env, batch.words, { speak, describe }),
       )
       total = addTally(total, tally)
       done += 1

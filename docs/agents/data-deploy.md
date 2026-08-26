@@ -38,22 +38,40 @@ learner retired with "Know it", which never comes back.
 
 ## Warming the pool
 
-The Explore feed shows pool words as full cards — definition, IPA, example,
-audio — but the pool file carries only headwords, and defining one costs a
-dictionary fetch plus a model call while speaking it costs TTS. Done on demand
-that is a feed of blanks, so it is done in advance instead:
+The Explore feed shows pool words as full cards — definition, IPA, audio, the
+pattern the word lives in, the phrases it goes with — but the pool file carries
+only headwords. Defining one costs a dictionary fetch plus a model call,
+speaking it costs TTS, and writing its card costs twenty seconds of a large
+model. Done on demand that is a feed of blanks, so it is done in advance:
 
 ```bash
 pnpm exec wrangler workflows trigger vocabulary-prewarm                  # everything
 pnpm exec wrangler workflows trigger vocabulary-prewarm '{"levels":["C1"]}'
 pnpm exec wrangler workflows trigger vocabulary-prewarm '{"speak":false}'
+pnpm exec wrangler workflows trigger vocabulary-prewarm '{"describe":false}'
 ```
 
-Twenty words per step, skipping anything already defined and spoken, which
-makes the run resumable and a repeat run nearly free. The whole pool is around
-230 steps, a couple of hours, and a dollar or two of DeepSeek and OpenAI.
-Entries and clips are shared by every learner, so this is paid once. Run it
-after `pnpm vocab` adds words.
+Twenty words per step, skipping anything already defined, spoken and described,
+which makes the run resumable and a repeat run nearly free. The whole pool is
+around 230 steps and several hours: a dollar or two of DeepSeek and OpenAI,
+plus roughly $4 of Workers AI for the cards. All three are shared by every
+learner, so this is paid once. Run it after `pnpm vocab` adds words.
+
+The cards come from `@cf/openai/gpt-oss-120b` over the REST API rather than
+through an `ai` binding. The binding has no local implementation, so declaring
+it makes the test pool open an authenticated session to Cloudflare, and CI has
+no token to open it with. The Worker therefore needs two things in production:
+
+```bash
+pnpm exec wrangler secret put WORKERS_AI_API_TOKEN   # Workers AI read
+pnpm exec wrangler secret put CLOUDFLARE_ACCOUNT_ID
+```
+
+Without them the pass still defines and speaks; it just writes no cards.
+Locally, `WORKERS_AI_MOCK_URL` points at `pnpm mock:ai` and nothing is spent.
+Neurons are billed per token written, so a card is about 75 of them — the free
+allocation of 10,000 a day covers roughly 130 words if you would rather drip
+the pool through than pay for it.
 
 ## Writing a migration
 

@@ -6,6 +6,7 @@ import { wordOffers, words } from '#/db/schema'
 import { normalizeHeadword, type DictionarySense } from '#/lib/dictionary'
 import {
   ensureEntry,
+  entryDetail,
   entryExamples,
   entrySenses,
   loadEntries,
@@ -19,6 +20,7 @@ import { TTS_VOICE } from '#/lib/ai'
 import { isDeepSeekConfigured, readDeepSeekConfig } from '#/lib/deepseek'
 import { requireUser } from '#/lib/session'
 import { pickRecommendations, type RecommendedWord } from '#/lib/vocabulary'
+import type { WordDetail } from '#/lib/word-detail'
 import { readSettings, type Settings } from '#/server/settings'
 
 export type WordCard = {
@@ -28,6 +30,8 @@ export type WordCard = {
   audioUrl: string
   definitions: DictionarySense[]
   examples: string[]
+  /** The fuller card, once the pre-warm pass has written one. */
+  detail: WordDetail | null
   source: string
   createdAt: string
   dictionaryMiss: boolean
@@ -63,6 +67,7 @@ function toCard(
     audioUrl: `/api/word-audio/${encodeURIComponent(row.normalized)}?v=${TTS_VOICE}`,
     definitions,
     examples: entryExamples(entry),
+    detail: entryDetail(entry),
     source: row.source,
     createdAt: row.createdAt,
     dictionaryMiss: definitions.length === 0,

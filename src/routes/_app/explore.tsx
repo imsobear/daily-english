@@ -345,11 +345,22 @@ function WordSlide({
   onDismiss: () => void
 }) {
   const mine = Boolean(card.wordId)
+  const [gloss, setGloss] = useState(false)
   const percent =
     card.familiarity != null ? Math.round(card.familiarity * 100) : null
-  // A snap card cannot scroll, so only the senses that fit a phone stay on it.
-  const senses = card.definitions.slice(0, 3)
-  const samples = card.examples.slice(0, 2)
+  const detail = card.detail
+  // A snap card cannot scroll, so only what fits a phone stays on it.
+  const senses = detail
+    ? detail.senses.slice(0, 3).map((sense) => ({
+        partOfSpeech: sense.pos,
+        definition: sense.definition,
+      }))
+    : card.definitions.slice(0, 3)
+  const samples = detail
+    ? detail.usage
+      ? []
+      : detail.senses.flatMap((sense) => (sense.example ? [sense.example] : [])).slice(0, 1)
+    : card.examples.slice(0, 2)
 
   return (
     <article className="flex h-full snap-start snap-always flex-col overflow-hidden px-4 pt-1 pb-3">
@@ -431,6 +442,52 @@ function WordSlide({
                   </li>
                 ))}
               </ul>
+            ) : null}
+
+            {detail?.usage ? (
+              <div className="mt-3 rounded-2xl bg-surface-sunk px-3.5 py-2.5">
+                <p className="kicker">Used as</p>
+                <p className="selectable mt-0.5 text-[0.9375rem] font-extrabold leading-snug">
+                  {detail.usage.pattern}
+                </p>
+                <p className="selectable mt-1 text-sm italic leading-snug text-ink-soft">
+                  {detail.usage.example}
+                </p>
+              </div>
+            ) : null}
+
+            {detail && detail.collocations.length > 0 ? (
+              <ul className="mt-2.5 flex flex-wrap gap-1.5">
+                {detail.collocations.slice(0, 4).map((phrase) => (
+                  <li
+                    key={phrase}
+                    className="selectable rounded-full border border-hairline px-2.5 py-1 text-xs font-bold text-ink-soft"
+                  >
+                    {phrase}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            {/*
+              Hidden until asked for. The English above is the exercise; a
+              translation sitting next to it is read first and the English
+              never is. One tap is a small enough price for being stuck.
+            */}
+            {detail?.zh ? (
+              gloss ? (
+                <p className="selectable mt-2.5 text-sm text-ink-soft">
+                  {detail.zh}
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setGloss(true)}
+                  className="mt-2.5 rounded-full border border-hairline px-2.5 py-1 text-xs font-bold text-ink-faint"
+                >
+                  中文
+                </button>
+              )
             ) : null}
           </div>
         )}

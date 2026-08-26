@@ -28,6 +28,10 @@ import { chunkSentences, splitSentences } from '#/lib/text'
 export type LessonEnv = {
   DB: D1Database
   AUDIO: R2Bucket
+  /** Workers AI, for the word cards. Only the pre-warm pass calls it. */
+  CLOUDFLARE_ACCOUNT_ID?: string
+  WORKERS_AI_API_TOKEN?: string
+  WORKERS_AI_MOCK_URL?: string
   DEEPSEEK_API_KEY?: string
   DEEPSEEK_MODEL?: string
   DEEPSEEK_BASE_URL?: string

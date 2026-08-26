@@ -10,6 +10,7 @@ import {
   type DictionaryHit,
   type DictionarySense,
 } from '#/lib/dictionary'
+import { readWordDetail } from '#/lib/word-detail'
 
 /**
  * The shared word store.
@@ -52,6 +53,11 @@ export function entrySenses(entry: Entry | undefined): DictionarySense[] {
         ]
       : [],
   )
+}
+
+/** The richer card, once the pre-warm pass has written one. */
+export function entryDetail(entry: Entry | undefined) {
+  return readWordDetail(entry?.detail)
 }
 
 export function entryExamples(entry: Entry | undefined): string[] {
@@ -110,6 +116,7 @@ export async function stubEntry(
     definitions: '[]',
     examples: '[]',
     senseSource: PENDING,
+    detail: null,
     audioKey: null,
     updatedAt: new Date().toISOString(),
   }
@@ -137,6 +144,9 @@ export async function saveEntry(
     definitions: JSON.stringify(hit.definitions),
     examples: JSON.stringify(hit.examples),
     senseSource,
+    // Left alone on conflict below: a definition arriving late must not throw
+    // away a card the pre-warm pass has already written.
+    detail: null,
     audioKey: null,
     updatedAt: new Date().toISOString(),
   }

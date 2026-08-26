@@ -58,6 +58,8 @@ export const dictionaryEntries = sqliteTable('dictionary_entries', {
   examples: text('examples').notNull().default('[]'),
   /** 'model' once a frequency-ordered entry exists; 'legacy' needs redefining. */
   senseSource: text('sense_source').notNull().default('legacy'),
+  /** Usage pattern, collocations and the rest, as `WordDetail` JSON. */
+  detail: text('detail'),
   /** R2 object holding the spoken word, written on first play. */
   audioKey: text('audio_key'),
   updatedAt: text('updated_at').notNull(),
