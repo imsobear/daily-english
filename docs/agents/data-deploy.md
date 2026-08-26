@@ -66,6 +66,9 @@ no token to open it with. The account id is a var in `wrangler.jsonc`, so produc
 pnpm exec wrangler secret put WORKERS_AI_API_TOKEN   # Workers AI read
 ```
 
+[How a word is built](word-data.md) covers what each phase writes, and what the
+app fills in by itself for a word the pass has never seen.
+
 Without it the pass still defines and speaks; it just writes no cards.
 Locally, `WORKERS_AI_MOCK_URL` points at `pnpm mock:ai` and nothing is spent.
 Neurons are billed per token written, so a card is about 75 of them — the free
