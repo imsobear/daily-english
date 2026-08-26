@@ -5,6 +5,12 @@ import { armSwipeBack } from '#/lib/swipe-back'
 
 /** How close to the left edge a touch must start to count as a back swipe. */
 const EDGE = 24
+/**
+ * The same question for a swipe we only watch rather than drive. Safari acts
+ * on a wider strip than we would ever hijack touches from, and a gesture we
+ * fail to notice is one the router animates on top of.
+ */
+const WATCHED_EDGE = 48
 /** Movement before the gesture commits to being horizontal rather than a scroll. */
 const SLOP = 8
 /** Fraction of the screen that always commits, however slowly it was dragged. */
@@ -65,7 +71,7 @@ function useEdgeSwipeBack(shellRef: React.RefObject<HTMLDivElement | null>) {
     const onStart = (event: TouchEvent) => {
       if (event.touches.length !== 1) return
       const touch = event.touches[0]
-      if (touch.clientX > EDGE) return
+      if (touch.clientX > (dragging ? EDGE : WATCHED_EDGE)) return
       armSwipeBack()
       if (!dragging) return
       if (!router.history.canGoBack()) return

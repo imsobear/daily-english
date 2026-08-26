@@ -12,10 +12,12 @@
  */
 
 /**
- * Long enough for the gesture to finish and the pop to land, short enough that
- * a swipe someone thought better of does not swallow the next back.
+ * Long enough to cover a slow drag and the pop that follows it, short enough
+ * that a swipe someone thought better of does not swallow the next back. The
+ * browser stops sending touches once it takes the gesture, so this has to be
+ * measured from where the finger landed rather than where it let go.
  */
-const WINDOW_MS = 1200
+const WINDOW_MS = 2000
 
 let armedAt = 0
 
