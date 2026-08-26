@@ -15,6 +15,7 @@ import {
   Button,
   ButtonLink,
   Card,
+  Chip,
   EmptyState,
   ProgressRing,
 } from '#/components/ui'
@@ -281,16 +282,17 @@ function HomePage() {
           <div className="mb-2 flex items-center justify-between gap-3 px-1">
             <h2 className="text-xl font-black tracking-tight">Lessons</h2>
             {playlist.length > 0 ? (
-              <button
-                type="button"
+              <Chip
+                tone={player.playing ? 'soft' : 'default'}
                 onClick={() => player.start(playlist)}
                 aria-label={
                   player.playing ? 'Open lesson player' : 'Play lessons'
                 }
-                className="grid size-11 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-600 active:bg-brand-100"
+                className="min-h-9 px-3 text-xs font-extrabold"
               >
-                <Play className="size-5 translate-x-px" fill="currentColor" />
-              </button>
+                <Play className="size-3 translate-x-px" fill="currentColor" />
+                {player.playing ? 'Playing' : 'Play'}
+              </Chip>
             ) : null}
           </div>
           {history.length === 0 ? (

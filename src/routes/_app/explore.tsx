@@ -158,12 +158,12 @@ function ExploreScreen() {
       className="fixed inset-x-0 top-0 flex flex-col"
       style={{ bottom: 'calc(3.5rem + env(safe-area-inset-bottom))' }}
     >
-      <header className="safe-top flex items-center gap-3 px-3.5 pb-2">
-        <h1 className="text-xl font-black tracking-tight">Explore</h1>
+      <header className="safe-top flex justify-center px-3.5 pb-2">
+        <h1 className="sr-only">Explore</h1>
         <div
           role="tablist"
           aria-label="Which words to show"
-          className="ml-auto flex gap-0.5 rounded-full bg-surface-sunk p-0.5"
+          className="flex gap-0.5 rounded-full bg-surface-sunk p-0.5"
         >
           {BROWSE_SOURCES.map((option) => (
             <button
@@ -172,7 +172,7 @@ function ExploreScreen() {
               role="tab"
               aria-selected={option === source}
               onClick={() => void choose(option)}
-              className={`min-h-8 rounded-full px-3 text-xs font-extrabold transition-colors ${
+              className={`min-h-8 rounded-full px-3.5 text-xs font-extrabold transition-colors ${
                 option === source
                   ? 'bg-surface text-ink shadow-[var(--shadow-card)]'
                   : 'text-ink-soft'
@@ -248,7 +248,7 @@ function ExploreScreen() {
             />
           ))}
 
-          <div className="flex h-full snap-start flex-col items-center justify-center gap-3 px-8 text-center">
+          <div className="flex h-full snap-start snap-always flex-col items-center justify-center gap-3 px-8 text-center">
             {end ? (
               <>
                 <p className="text-lg font-extrabold">That is the lot</p>
@@ -288,148 +288,125 @@ function WordSlide({
   const mine = Boolean(card.wordId)
   const percent =
     card.familiarity != null ? Math.round(card.familiarity * 100) : null
+  // A snap card cannot scroll, so only the senses that fit a phone stay on it.
+  const senses = card.definitions.slice(0, 3)
+  const samples = card.examples.slice(0, 2)
 
   return (
-    <article className="relative flex h-full snap-start flex-col px-5 pt-1 pb-4">
-      <div className="mx-auto flex min-h-0 w-full max-w-sm flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          {card.level ? (
-            <p className="mb-2">
-              <span className="rounded-full bg-surface-sunk px-2 py-0.5 text-[0.6875rem] font-black tracking-wider text-ink-soft">
-                {card.level}
+    <article className="flex h-full snap-start snap-always flex-col overflow-hidden px-4 pt-1 pb-3">
+      <div className="mx-auto flex min-h-0 w-full max-w-sm flex-1 flex-col overflow-hidden">
+        <div className="flex items-start gap-2.5">
+          <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={onSpeak}
+              aria-label={`Hear ${card.headword}`}
+              className="flex w-full items-center gap-2 text-left"
+            >
+              <span className="selectable min-w-0 text-[1.75rem] font-black leading-none tracking-tight">
+                {card.headword}
               </span>
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-sunk text-ink-soft">
+                <Volume2 className="size-4" />
+              </span>
+            </button>
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-ink-soft">
+              {card.ipa ? <span>{card.ipa}</span> : null}
+              {card.level ? (
+                <span className="rounded-full bg-surface-sunk px-1.5 py-px text-[0.625rem] font-black tracking-wider">
+                  {card.level}
+                </span>
+              ) : null}
             </p>
-          ) : null}
-
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={onSpeak}
-                aria-label={`Hear ${card.headword}`}
-                className="flex w-full items-center gap-3 text-left"
-              >
-                <span className="selectable min-w-0 text-4xl font-black tracking-tight">
-                  {card.headword}
-                </span>
-                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-sunk text-ink-soft">
-                  <Volume2 className="size-5" />
-                </span>
-              </button>
-              {card.ipa ? (
-                <p className="mt-1.5 text-sm text-ink-soft">{card.ipa}</p>
-              ) : null}
-              {card.source ? (
-                <p className="kicker mt-1">
-                  {card.source === 'recommendation'
-                    ? 'Recommended'
-                    : 'Added by you'}
-                </p>
-              ) : null}
-            </div>
-            {mine ? (
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <span className="text-[0.6875rem] font-black uppercase tracking-wider text-brand-600">
-                  Yours
-                </span>
-                {percent != null ? (
-                  <ProgressRing
-                    value={percent}
-                    max={100}
-                    size={60}
-                    stroke={7}
-                    tone={percent >= 80 ? 'grass' : 'brand'}
-                  >
-                    <span className="tabular text-xs font-black">{percent}%</span>
-                  </ProgressRing>
-                ) : null}
-              </div>
-            ) : null}
           </div>
-
-          {card.pending ? (
-            <p className="mt-5 flex items-center gap-2 text-[1.0625rem] text-ink-faint">
-              <Spinner /> Looking this one up…
-            </p>
-          ) : (
-            <>
-              <section className="mt-5">
-                <h3 className="kicker mb-2">Meanings</h3>
-                {card.definitions.length === 0 ? (
-                  <p className="text-[1.0625rem] leading-relaxed text-ink-soft">
-                    No definition for this one yet.
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {card.definitions.map((sense, index) => (
-                      <li
-                        key={`${sense.partOfSpeech}-${index}`}
-                        className="card-soft px-4 py-3"
-                      >
-                        <p className="kicker">{sense.partOfSpeech}</p>
-                        <p className="selectable mt-1 text-[1.0625rem] leading-relaxed">
-                          {sense.definition}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              {card.examples.length > 0 ? (
-                <section className="mt-4 pb-2">
-                  <h3 className="kicker mb-2">In use</h3>
-                  <ul className="space-y-2">
-                    {card.examples.map((example) => (
-                      <li
-                        key={example}
-                        className="selectable rounded-2xl bg-surface-sunk px-4 py-3 text-[1.0625rem] italic leading-relaxed text-ink-soft"
-                      >
-                        {example}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
-            </>
-          )}
+          {mine && percent != null ? (
+            <ProgressRing
+              value={percent}
+              max={100}
+              size={48}
+              stroke={6}
+              tone={percent >= 80 ? 'grass' : 'brand'}
+            >
+              <span className="tabular text-[0.625rem] font-black">
+                {percent}%
+              </span>
+            </ProgressRing>
+          ) : null}
         </div>
 
-        {mine ? null : (
-          <div className="mt-3 flex shrink-0 gap-2">
-            {mark === 'saved' ? (
-              <Button tone="neutral" block disabled>
+        {card.pending ? (
+          <p className="mt-4 flex items-center gap-2 text-sm text-ink-faint">
+            <Spinner /> Looking this one up…
+          </p>
+        ) : (
+          <div className="mt-3 min-h-0 overflow-hidden">
+            {senses.length === 0 ? (
+              <p className="text-sm leading-snug text-ink-soft">
+                No definition for this one yet.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {senses.map((sense, index) => (
+                  <li
+                    key={`${sense.partOfSpeech}-${index}`}
+                    className="text-[0.9375rem] leading-snug"
+                  >
+                    {sense.partOfSpeech ? (
+                      <span className="kicker mr-1.5 inline">
+                        {sense.partOfSpeech}{' '}
+                      </span>
+                    ) : null}
+                    <span className="selectable">{sense.definition}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {samples.length > 0 ? (
+              <ul className="mt-2.5 space-y-1">
+                {samples.map((example) => (
+                  <li
+                    key={example}
+                    className="selectable text-sm italic leading-snug text-ink-soft"
+                  >
+                    {example}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        )}
+
+        {!mine || first ? (
+          <div className="mt-auto flex w-full shrink-0 flex-col items-center pt-3">
+            {first ? (
+              <ChevronsDown className="mb-2 size-5 animate-bounce text-ink-faint" />
+            ) : null}
+            {mine ? null : mark === 'saved' ? (
+              <Button tone="neutral" size="sm" block disabled>
                 <Check className="size-4" /> Saved
               </Button>
             ) : mark === 'known' ? (
-              <Button tone="ghost" block disabled>
+              <Button tone="ghost" size="sm" block disabled>
                 Marked as known
               </Button>
             ) : (
-              <>
-                <Button onClick={onSave} block>
+              <div className="flex w-full gap-2">
+                <Button onClick={onSave} size="sm" block>
                   <Plus className="size-4" /> Save
                 </Button>
-                <Button onClick={onDismiss} tone="neutral" className="shrink-0">
+                <Button
+                  onClick={onDismiss}
+                  tone="neutral"
+                  size="sm"
+                  className="shrink-0"
+                >
                   Know it
                 </Button>
-              </>
+              </div>
             )}
           </div>
-        )}
+        ) : null}
       </div>
-
-      {/* Only on the very first card: a feed that has to be scrolled should
-          say so once, then never again. */}
-      {first ? (
-        <span
-          className={`pointer-events-none absolute inset-x-0 grid place-items-center text-ink-faint ${
-            mine ? 'bottom-5' : 'bottom-20'
-          }`}
-        >
-          <ChevronsDown className="size-5 animate-bounce" />
-        </span>
-      ) : null}
     </article>
   )
 }
