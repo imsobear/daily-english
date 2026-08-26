@@ -14,9 +14,7 @@
   ·
   <a href="#development">Development</a>
   ·
-  <a href="#self-hosting">Self-hosting</a>
-  ·
-  <a href="#license">MIT</a>
+  <a href="#license">License</a>
 </p>
 
 <table>
@@ -49,7 +47,9 @@ Live at [english.readish.app](https://english.readish.app). Sign in with Google.
 3. **Listen again** — the whole article, straight through, now that you know what it says.
 4. **Recall** — a short quiz on the language that actually appeared.
 
-Playback is 0.75× / 1× / 1.25×. Articles stay on your account; you can restart a lesson without rewriting it.
+Playback is 0.75× / 1× / 1.25×. Articles stay on your account: an unfinished lesson opens where you left it, and a finished one can be stepped through again.
+
+Between lessons there is **Explore**, a deck of word cards at your level to flick through — your own saved words, new ones from the pool, or both.
 
 ## Stack
 
@@ -82,27 +82,14 @@ pnpm check   # typecheck, tests, production build — this is what CI runs
 
 More detail: [local development](docs/agents/local-dev.md), [testing](docs/agents/testing.md).
 
-## Self-hosting
-
-`wrangler.jsonc` in this repository is wired to the live account (custom domain, D1 id, R2 bucket). To run your own copy:
-
-1. Create a Cloudflare account, a D1 database, and an R2 bucket.
-2. Replace `database_id`, `database_name`, `bucket_name`, and the `routes` entry in `wrangler.jsonc`.
-3. Put secrets with `pnpm exec wrangler secret put NAME` for every name in `.dev.vars.example` (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_SECRET`).
-4. Point the Google OAuth redirect at `https://your-domain/api/auth/google/callback`.
-5. Apply migrations, then deploy:
-
-```bash
-pnpm exec wrangler d1 migrations apply english-lessons --remote
-pnpm deploy
-```
-
-Schema changes need a specific order when they drop columns — see [data and deploys](docs/agents/data-deploy.md).
-
 ## Vocabulary data
 
 `src/data/vocabulary.ts` is generated from the [CEFR-J](https://www.cefr-j.org/) and Octanove vocabulary profiles ([CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), via Open Language Profiles) plus a web-frequency list. Rebuild with `pnpm vocab`. Do not hand-edit the output.
 
+That file is an adaptation of CC BY-SA 4.0 data, so it stays under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) whatever the rest of the repository is licensed as. The share-alike condition came with the data and does not go away.
+
 ## License
 
-[MIT](LICENSE).
+[PolyForm Noncommercial 1.0.0](LICENSE). Read it, learn from it, change it, build on it — for any noncommercial purpose. Commercial use is not granted, and that includes running it as a service for other people.
+
+It is not a self-hosting kit either. `wrangler.jsonc` is wired to the live account, and what actually makes the app work — the domain, the D1 database, the R2 bucket, the model keys — is not in here. There are no instructions for standing up your own copy, and no support for it.
