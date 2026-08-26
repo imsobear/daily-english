@@ -781,7 +781,7 @@ export const deleteLesson = createServerFn({ method: 'POST' })
 
 /**
  * A lesson's step timestamps in the order they are worked through: hear it in
- * parts, read it, hear the whole thing with no text, then recall the words.
+ * parts, read it, listen again to the whole article, then recall the words.
  */
 export function stampsOf(article: typeof lessonArticles.$inferSelect) {
   return [

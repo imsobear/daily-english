@@ -197,7 +197,7 @@ export const lessonArticles = sqliteTable(
     stepBlindListenAt: text('step_blind_listen_at'),
     stepListenReadAt: text('step_listen_read_at'),
     /**
-     * The whole article heard straight through with no text, after reading it.
+     * The whole article heard straight through after reading it (listen again).
      * The chunked first listen reveals each part in writing as it plays, so
      * this is the only pass where the learner follows connected speech with
      * nothing to fall back on — which is the pass that builds listening.

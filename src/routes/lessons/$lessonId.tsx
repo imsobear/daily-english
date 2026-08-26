@@ -40,7 +40,7 @@ import {
 import { addWord } from '#/server/words'
 
 /**
- * Hear it in parts, read it, then hear the whole thing with nothing to read.
+ * Hear it in parts, read it, then listen again to the whole article.
  * The first listen reveals each part in writing as soon as it has played, so
  * the third step is the only pass where speech has to carry the meaning on its
  * own — and by then the meaning is known, which is what makes it worth doing.
@@ -48,13 +48,13 @@ import { addWord } from '#/server/words'
 const STEPS = [
   { id: 0, label: 'Listen', icon: Ear },
   { id: 1, label: 'Read', icon: Eye },
-  { id: 2, label: 'No text', icon: Headphones },
+  { id: 2, label: 'Listen again', icon: Headphones },
   { id: 3, label: 'Recall', icon: Lightbulb },
 ] as const
 
 const LAST_STEP = STEPS.length - 1
 
-/** The whole article, no text. Known words at speed is the exercise. */
+/** The whole article, heard once more. Known words at speed is the exercise. */
 const FULL_LISTEN_STEP = 2
 const FULL_LISTEN_SPEED = 1.25
 
@@ -108,7 +108,7 @@ function LessonPage() {
     sentence: number
   } | null>(null)
   const [revealed, setRevealed] = useState<Set<number>>(new Set())
-  /** The no-text listen, with the text shown anyway because it was too hard. */
+  /** The listen-again pass, with the text shown anyway because it was too hard. */
   const [peeking, setPeeking] = useState(false)
   /** The recall quiz: which question is on screen, and what was picked where. */
   const [quizIndex, setQuizIndex] = useState(0)
@@ -520,7 +520,7 @@ function LessonPage() {
                 disabled={locked}
                 onClick={() => go(item.id)}
                 className={cn(
-                  'flex min-h-12 w-full flex-col items-center justify-center gap-0.5 rounded-2xl border text-[0.6875rem] font-black transition-colors',
+                  'flex min-h-12 w-full flex-col items-center justify-center gap-0.5 rounded-2xl border px-0.5 text-center text-[0.6875rem] leading-tight font-black transition-colors',
                   item.id === step
                     ? 'border-brand-700 bg-brand-500 text-white'
                     : done
@@ -631,10 +631,11 @@ function LessonPage() {
               <span className="mx-auto grid size-14 place-items-center rounded-full bg-indigo-100 text-indigo-500">
                 <Headphones className="size-7" />
               </span>
-              <p className="mt-2.5 font-extrabold">One more time, no text</p>
+              <p className="mt-2.5 font-extrabold">Listen again</p>
               <p className="mt-0.5 text-sm text-ink-soft">
-                Straight through and a little faster. You know what it says
-                now, so all that is left is keeping up with it.
+                The whole article, straight through and a little faster. You
+                know what it says now, so all that is left is keeping up with
+                it.
               </p>
             </Card>
 
