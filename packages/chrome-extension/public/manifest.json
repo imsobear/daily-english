@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Readish Words",
+  "version": "0.1.0",
+  "description": "Add a selected word or short phrase to your Readish list.",
+  "permissions": ["contextMenus", "cookies"],
+  "host_permissions": ["https://english.readish.app/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Readish Words",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon-16.png",
+      "32": "icon-32.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

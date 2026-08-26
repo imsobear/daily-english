@@ -1,0 +1,49 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "english-lessons",
+  "compatibility_date": "2026-08-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/worker.ts",
+  "observability": {
+    "enabled": true
+  },
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "english.readish.app",
+      "custom_domain": true
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "english-lessons",
+      "database_id": "45f8f291-5e91-4b83-ab88-79d04bbd71ec",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "AUDIO",
+      "bucket_name": "english-lessons-audio"
+    }
+  ],
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
+  "workflows": [
+    {
+      "name": "lesson-generation",
+      "binding": "LESSON_WORKFLOW",
+      "class_name": "LessonWorkflow"
+    },
+    {
+      // Run by hand after the vocabulary pool changes:
+      //   pnpm exec wrangler workflows trigger vocabulary-prewarm
+      "name": "vocabulary-prewarm",
+      "binding": "PREWARM_WORKFLOW",
+      "class_name": "PrewarmWorkflow"
+    }
+  ]
+}

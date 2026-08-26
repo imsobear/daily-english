@@ -1,0 +1,21 @@
+node_modules
+.DS_Store
+dist
+dist-ssr
+*.local
+.env
+.env.*
+!.env.example
+.dev.vars
+.nitro
+.tanstack
+.wrangler
+.output
+.vinxi
+__unconfig*
+todos.json
+*.db
+dev.db
+# Browser-automation scratch: snapshots and screenshots from local UI checks.
+.playwright-cli
+output

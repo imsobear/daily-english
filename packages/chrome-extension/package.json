@@ -1,0 +1,16 @@
+{
+  "name": "chrome-extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.2.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  }
+}

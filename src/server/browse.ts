@@ -1,0 +1,453 @@
+import { createServerFn } from '@tanstack/react-start'
+import { asc, eq } from 'drizzle-orm'
+
+import { getDb, getEnv, waitUntil } from '#/db'
+import { userSettings, wordOffers, words } from '#/db/schema'
+import { TTS_VOICE } from '#/lib/ai'
+import {
+  asBrowseSource,
+  expandPos,
+  mineShare,
+  weave,
+  type BrowseSource,
+} from '#/lib/browse'
+import { isDeepSeekConfigured, readDeepSeekConfig } from '#/lib/deepseek'
+import { normalizeHeadword } from '#/lib/dictionary'
+import {
+  ensureEntry,
+  entryExamples,
+  entrySenses,
+  loadEntries,
+  needsBetterSenses,
+  type Entry,
+} from '#/lib/entries'
+import { requireUser } from '#/lib/session'
+import { CEFR_LEVELS, type CefrLevel } from '#/lib/settings'
+import { pickRecommendations, poolEntry } from '#/lib/vocabulary'
+import { readSettings } from '#/server/settings'
+
+export type BrowseCard = {
+  normalized: string
+  headword: string
+  ipa: string | null
+  audioUrl: string
+  level: CefrLevel | null
+  partOfSpeech: string | null
+  definition: string | null
+  example: string | null
+  /** Set when this is already one of the learner's words. */
+  wordId: string | null
+  familiarity: number | null
+  /** Nobody has defined this word yet; the lookup is running behind us. */
+  pending: boolean
+}
+
+export type BrowsePage = {
+  cards: BrowseCard[]
+  /** Where the next page should resume in the learner's own list. */
+  mineCursor: number
+  /** Neither source has anything more to give. */
+  end: boolean
+}
+
+export type BrowseStart = BrowsePage & {
+  source: BrowseSource
+  level: CefrLevel
+  /**
+   * The level to suggest moving up to, once enough words here are known.
+   * Null the rest of the time, which is nearly always.
+   */
+  levelHint: CefrLevel | null
+}
+
+/** A phone shows one card at a time; a dozen is several flicks of scrolling. */
+const PAGE = 12
+
+/**
+ * Known words at the current level before the feed suggests moving up.
+ *
+ * Thirty is a couple of hundred cards' worth of scrolling with an honest
+ * finger, which is enough to mean something. The count only looks at the
+ * current level, so raising it clears the suggestion by itself.
+ */
+const LEVEL_HINT_AT = 30
+
+/** New words defined per page, when the pre-warm pass has not reached them. */
+const ENRICH_PER_PAGE = 6
+
+function deepSeekConfig() {
+  const env = getEnv()
+  return isDeepSeekConfigured(env) ? readDeepSeekConfig(env) : null
+}
+
+function audioUrl(normalized: string) {
+  return `/api/word-audio/${encodeURIComponent(normalized)}?v=${TTS_VOICE}`
+}
+
+function cardOf(input: {
+  normalized: string
+  headword: string
+  entry: Entry | undefined
+  level: CefrLevel | null
+  pos: string | null
+  wordId?: string | null
+  familiarity?: number | null
+}): BrowseCard {
+  const senses = entrySenses(input.entry)
+  const examples = entryExamples(input.entry)
+  return {
+    normalized: input.normalized,
+    headword: input.entry?.headword ?? input.headword,
+    ipa: input.entry?.ipa ?? null,
+    audioUrl: audioUrl(input.normalized),
+    level: input.level,
+    // The sense that is actually shown knows its own part of speech; the
+    // pool's is a fallback for words it has not defined yet.
+    partOfSpeech: senses[0]?.partOfSpeech ?? input.pos,
+    definition: senses[0]?.definition ?? null,
+    example: examples[0] ?? null,
+    wordId: input.wordId ?? null,
+    familiarity: input.familiarity ?? null,
+    pending: senses.length === 0,
+  }
+}
+
+/**
+ * The learner's own words, shakiest first and wrapping at the end.
+ *
+ * Familiarity ascending puts the words they are losing at the front, and a
+ * feed with no end has to come back round eventually — an idle scroll through
+ * forty saved words should keep working at card two hundred.
+ */
+async function mineCards(userId: string, cursor: number, wanted: number) {
+  const db = getDb()
+  if (wanted <= 0) return { cards: [] as BrowseCard[], cursor, exhausted: true }
+
+  const read = async (offset: number, limit: number) =>
+    db.query.words.findMany({
+      where: eq(words.userId, userId),
+      orderBy: [asc(words.familiarity), asc(words.createdAt)],
+      limit,
+      offset,
+    })
+
+  let rows = await read(cursor, wanted)
+  let next = cursor + rows.length
+  if (rows.length < wanted && cursor > 0) {
+    const wrapped = await read(0, wanted - rows.length)
+    rows = [...rows, ...wrapped]
+    next = wrapped.length
+  }
+  if (rows.length === 0) {
+    return { cards: [] as BrowseCard[], cursor: 0, exhausted: true }
+  }
+
+  const entries = await loadEntries(
+    db,
+    rows.map((row) => row.normalized),
+  )
+  const cards = rows.map((row) => {
+    const pool = poolEntry(row.normalized)
+    return cardOf({
+      normalized: row.normalized,
+      headword: row.headword,
+      entry: entries.get(row.normalized),
+      level: pool?.level ?? null,
+      pos: expandPos(pool?.pos),
+      wordId: row.id,
+      familiarity: row.familiarity,
+    })
+  })
+  return { cards, cursor: next, exhausted: false }
+}
+
+/**
+ * Words from the pool this learner has not saved, dismissed or just seen.
+ *
+ * Recording the showing is what stops the next page repeating this one, and
+ * it is the same ledger the add-words screen reads, so a word scrolled past
+ * here does not turn up as a suggestion an hour later.
+ */
+async function freshCards(userId: string, level: CefrLevel, wanted: number) {
+  const db = getDb()
+  if (wanted <= 0) return { cards: [] as BrowseCard[], exhausted: true }
+
+  const [owned, offers] = await Promise.all([
+    db.query.words.findMany({
+      where: eq(words.userId, userId),
+      columns: { normalized: true },
+    }),
+    db.query.wordOffers.findMany({
+      where: eq(wordOffers.userId, userId),
+      columns: { normalized: true, verdict: true },
+      orderBy: asc(wordOffers.offeredAt),
+    }),
+  ])
+
+  const known = offers.filter((row) => row.verdict === 'known')
+  /*
+   * Three times the page, so the ones that already have a definition can be
+   * preferred. Every card here is a word this learner has never been shown,
+   * which before the pre-warm pass has run means every card would otherwise
+   * be a word nobody has defined yet — a feed of blanks.
+   */
+  const picks = pickRecommendations({
+    level,
+    // Known words join the owned set rather than the offered one: offered
+    // words come back when the level runs dry, and "I know this" should mean
+    // never again.
+    owned: [
+      ...owned.map((row) => row.normalized),
+      ...known.map((row) => row.normalized),
+    ],
+    offered: offers
+      .filter((row) => row.verdict !== 'known')
+      .map((row) => row.normalized),
+    limit: wanted * 3,
+  })
+  if (picks.length === 0) return { cards: [] as BrowseCard[], exhausted: true }
+
+  const entries = await loadEntries(
+    db,
+    picks.map((pick) => normalizeHeadword(pick.headword)),
+  )
+  const ready = (pick: (typeof picks)[number]) =>
+    !needsBetterSenses(entries.get(normalizeHeadword(pick.headword)))
+
+  const chosen = [...picks.filter(ready), ...picks.filter((p) => !ready(p))].slice(
+    0,
+    wanted,
+  )
+  const shown = new Set(chosen)
+
+  const normalized = chosen.map((pick) => normalizeHeadword(pick.headword))
+  const cards = chosen.map((pick, i) =>
+    cardOf({
+      normalized: normalized[i],
+      headword: pick.headword,
+      entry: entries.get(normalized[i]),
+      level: pick.level,
+      pos: expandPos(pick.pos),
+    }),
+  )
+
+  await recordShown(userId, normalized)
+
+  /*
+   * Whatever is still undefined is looked up after the response: the ones on
+   * this page, so they are complete if the learner scrolls back, then the
+   * candidates we passed over, so the next page has more to choose from. A
+   * page of twelve is not worth holding behind a dozen model calls.
+   */
+  const missing = [...chosen, ...picks.filter((pick) => !shown.has(pick))]
+    .filter((pick) => !ready(pick))
+    .map((pick) => normalizeHeadword(pick.headword))
+    .slice(0, ENRICH_PER_PAGE)
+  if (missing.length > 0) {
+    const config = deepSeekConfig()
+    waitUntil(
+      Promise.allSettled(
+        missing.map((word) =>
+          ensureEntry(db, word, config).catch((error: unknown) => {
+            console.error('Could not define', word, error)
+          }),
+        ),
+      ),
+    )
+  }
+
+  return { cards, exhausted: false }
+}
+
+async function recordShown(userId: string, normalized: string[]) {
+  if (normalized.length === 0) return
+  const db = getDb()
+  const offeredAt = new Date().toISOString()
+  try {
+    // D1 allows 100 bound variables per statement and an offer binds 4.
+    for (let i = 0; i < normalized.length; i += 20) {
+      await db
+        .insert(wordOffers)
+        .values(
+          normalized.slice(i, i + 20).map((word) => ({
+            userId,
+            normalized: word,
+            offeredAt,
+            verdict: 'shown',
+          })),
+        )
+        // Only the date moves: a verdict already recorded is the learner's,
+        // and showing the word again does not overrule it.
+        .onConflictDoUpdate({
+          target: [wordOffers.userId, wordOffers.normalized],
+          set: { offeredAt },
+        })
+    }
+  } catch (error) {
+    console.error('could not record browse offers', error)
+  }
+}
+
+/**
+ * One page of the feed.
+ *
+ * Separate from the server function so it can be exercised with a user id
+ * rather than a session: what is worth testing here is the composition, not
+ * the cookie.
+ */
+export async function browsePageFor(input: {
+  userId: string
+  source: BrowseSource
+  level: CefrLevel
+  mineCursor: number
+}): Promise<BrowsePage> {
+  if (input.source === 'mine') {
+    const mine = await mineCards(input.userId, input.mineCursor, PAGE)
+    return { cards: mine.cards, mineCursor: mine.cursor, end: mine.exhausted }
+  }
+
+  if (input.source === 'new') {
+    const fresh = await freshCards(input.userId, input.level, PAGE)
+    return {
+      cards: fresh.cards,
+      mineCursor: input.mineCursor,
+      end: fresh.exhausted,
+    }
+  }
+
+  /*
+   * Mixing asks the learner's list first, because how much of it there is
+   * decides the rest of the page: someone with three saved words should still
+   * get a full page, and so should someone whose level has run dry. Each side
+   * covers for the other rather than leaving a short page behind.
+   */
+  const mine = await mineCards(input.userId, input.mineCursor, mineShare(PAGE))
+  const fresh = await freshCards(
+    input.userId,
+    input.level,
+    PAGE - mine.cards.length,
+  )
+
+  const short = PAGE - mine.cards.length - fresh.cards.length
+  const extra =
+    short > 0 && !mine.exhausted
+      ? await mineCards(input.userId, mine.cursor, short)
+      : { cards: [] as BrowseCard[], cursor: mine.cursor, exhausted: true }
+
+  return {
+    cards: weave(fresh.cards, [...mine.cards, ...extra.cards]),
+    mineCursor: extra.cursor,
+    end: mine.exhausted && fresh.exhausted,
+  }
+}
+
+export const getBrowseStart = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<BrowseStart> => {
+    const user = await requireUser()
+    const db = getDb()
+    const [settings, row] = await Promise.all([
+      readSettings(user.id),
+      db.query.userSettings.findFirst({
+        where: eq(userSettings.userId, user.id),
+        columns: { browseSource: true },
+      }),
+    ])
+    const source = asBrowseSource(row?.browseSource)
+
+    const page = await browsePageFor({
+      userId: user.id,
+      source,
+      level: settings.cefrLevel,
+      mineCursor: 0,
+    })
+
+    return {
+      ...page,
+      source,
+      level: settings.cefrLevel,
+      levelHint: await levelHint(user.id, settings.cefrLevel),
+    }
+  },
+)
+
+/**
+ * Whether this level has stopped teaching them anything.
+ *
+ * Counted from the words they said they already knew, at their current level
+ * only: the point of the count is "this level is too easy for you now", and
+ * words dismissed back when they were a B1 say nothing about B2.
+ */
+async function levelHint(userId: string, level: CefrLevel) {
+  const next = CEFR_LEVELS[CEFR_LEVELS.indexOf(level) + 1]
+  if (!next) return null
+
+  const db = getDb()
+  const known = await db.query.wordOffers.findMany({
+    where: eq(wordOffers.userId, userId),
+    columns: { normalized: true, verdict: true },
+  })
+  const here = known.filter(
+    (row) => row.verdict === 'known' && poolEntry(row.normalized)?.level === level,
+  )
+  return here.length >= LEVEL_HINT_AT ? next : null
+}
+
+export const getBrowseMore = createServerFn({ method: 'POST' })
+  .validator((data: { source: string; mineCursor: number }) => ({
+    source: asBrowseSource(data.source),
+    mineCursor: Math.max(0, Math.floor(data.mineCursor) || 0),
+  }))
+  .handler(async ({ data }): Promise<BrowsePage> => {
+    const user = await requireUser()
+    const settings = await readSettings(user.id)
+    return browsePageFor({
+      userId: user.id,
+      source: data.source,
+      level: settings.cefrLevel,
+      mineCursor: data.mineCursor,
+    })
+  })
+
+export const setBrowseSource = createServerFn({ method: 'POST' })
+  .validator((data: { source: string }) => ({
+    source: asBrowseSource(data.source),
+  }))
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    await getDb()
+      .update(userSettings)
+      .set({ browseSource: data.source, updatedAt: new Date().toISOString() })
+      .where(eq(userSettings.userId, user.id))
+    return data
+  })
+
+/**
+ * Retire a word the learner already knows.
+ *
+ * Deliberately not a review: nothing here touches familiarity or scheduling,
+ * because a tap on a card they were idly scrolling past is not evidence of
+ * anything except that they did not need this one.
+ */
+export const markWordKnown = createServerFn({ method: 'POST' })
+  .validator((data: { headword: string }) => ({
+    headword: normalizeHeadword(data.headword),
+  }))
+  .handler(async ({ data }) => {
+    const user = await requireUser()
+    if (!data.headword) throw new Error('Missing word')
+
+    const now = new Date().toISOString()
+    await getDb()
+      .insert(wordOffers)
+      .values({
+        userId: user.id,
+        normalized: data.headword,
+        offeredAt: now,
+        verdict: 'known',
+      })
+      .onConflictDoUpdate({
+        target: [wordOffers.userId, wordOffers.normalized],
+        set: { verdict: 'known', offeredAt: now },
+      })
+    return { ok: true }
+  })

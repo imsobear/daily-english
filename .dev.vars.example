@@ -1,0 +1,34 @@
+# Copy to `.dev.vars` and fill in. That file is gitignored, so it stays on your
+# machine. This is the file the local Worker runtime reads.
+#
+# The deployed Worker does NOT read it. Upload each secret separately:
+#   pnpm exec wrangler secret put DEEPSEEK_API_KEY
+#   pnpm exec wrangler secret put OPENAI_API_KEY
+#   pnpm exec wrangler secret put GOOGLE_CLIENT_ID
+#   pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET
+#   pnpm exec wrangler secret put SESSION_SECRET
+
+# https://platform.deepseek.com/api_keys
+DEEPSEEK_API_KEY=
+
+# Optional overrides. Default to deepseek-v4-flash on the official endpoint.
+# Point BASE_URL at the bundled mock (`pnpm mock:ai`) to work without a key.
+# DEEPSEEK_MODEL=deepseek-v4-flash
+# DEEPSEEK_BASE_URL=http://127.0.0.1:8799/v1
+
+# Lesson audio uses OpenAI gpt-4o-mini-tts. Leave TTS_MOCK_URL pointed at
+# `pnpm mock:ai` for free local runs; comment it out (and set OPENAI_API_KEY)
+# only when you want to hear the real voice. Never set TTS_MOCK_URL in production.
+# OPENAI_API_KEY=
+# TTS_MOCK_URL=http://127.0.0.1:8799/tts
+
+# Google OAuth client, for Gmail sign-in. Locally you can skip these and use
+# the "Sign in as the test learner" button, which only exists on the dev server.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# Signs session cookies. Optional locally (a fixed development key is used),
+# required in production:
+#   openssl rand -base64 32 | pnpm exec wrangler secret put SESSION_SECRET
+# Rotating it signs every session out, which is the only revocation there is.
+# SESSION_SECRET=

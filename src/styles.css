@@ -1,0 +1,513 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------
+   Tokens
+   Warm, high-energy habit palette. Tangerine drives action and
+   streaks, green confirms progress, indigo marks listening.
+   --------------------------------------------------------------- */
+
+:root {
+  --brand-50: #fff3ea;
+  --brand-100: #ffe1cc;
+  --brand-300: #ffab6b;
+  --brand-500: #ff6b18;
+  --brand-600: #ea5808;
+  --brand-700: #b94406;
+
+  --grass-100: #d8f6e3;
+  --grass-500: #18a957;
+  --grass-600: #128444;
+
+  --indigo-100: #e2e0ff;
+  --indigo-500: #6c5ce7;
+  --indigo-600: #5545d4;
+
+  --berry-500: #d92d47;
+
+  --ink: #1f1b18;
+  --ink-soft: #6f635b;
+  --ink-faint: #a2968d;
+
+  --page: #fff8f2;
+  --surface: #ffffff;
+  --surface-sunk: #fdf1e7;
+  --hairline: rgba(31, 27, 24, 0.1);
+  --hairline-strong: rgba(31, 27, 24, 0.18);
+
+  --shadow-card: 0 1px 2px rgba(31, 27, 24, 0.04), 0 8px 24px rgba(31, 27, 24, 0.06);
+  --shadow-pop: 0 12px 32px rgba(234, 88, 8, 0.22);
+
+  --radius: 1rem;
+
+  /* shadcn-compatible aliases so utility names stay familiar */
+  --background: var(--page);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand-500);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-sunk);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-sunk);
+  --muted-foreground: var(--ink-soft);
+  --accent: var(--brand-50);
+  --accent-foreground: var(--brand-700);
+  --destructive: #c0341d;
+  --destructive-foreground: #ffffff;
+  --border: var(--hairline);
+  --input: var(--hairline-strong);
+  --ring: var(--brand-500);
+}
+
+.dark {
+  --brand-50: #2a1a10;
+  --brand-100: #3d2415;
+  --brand-300: #b95f16;
+  --brand-500: #ff7f38;
+  --brand-600: #ff6b18;
+  --brand-700: #ffab6b;
+
+  --grass-100: #10301f;
+  --grass-500: #34c777;
+  --grass-600: #6fe3a4;
+
+  --indigo-100: #201d3d;
+  --indigo-500: #8b7cff;
+  --indigo-600: #a99dff;
+
+  --berry-500: #ff6b83;
+
+  --ink: #f6efe9;
+  --ink-soft: #b3a79e;
+  --ink-faint: #7d7169;
+
+  --page: #16120f;
+  --surface: #221d19;
+  --surface-sunk: #2c2521;
+  --hairline: rgba(246, 239, 233, 0.12);
+  --hairline-strong: rgba(246, 239, 233, 0.22);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.36);
+  --shadow-pop: 0 12px 32px rgba(255, 107, 24, 0.24);
+
+  --primary-foreground: #1a1006;
+  --destructive: #ff6b6b;
+  --destructive-foreground: #1a1006;
+}
+
+@theme inline {
+  --font-sans: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Lora', Georgia, 'Times New Roman', serif;
+
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-300: var(--brand-300);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-grass-100: var(--grass-100);
+  --color-grass-500: var(--grass-500);
+  --color-grass-600: var(--grass-600);
+  --color-indigo-100: var(--indigo-100);
+  --color-indigo-500: var(--indigo-500);
+  --color-indigo-600: var(--indigo-600);
+  --color-berry-500: var(--berry-500);
+
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-sunk: var(--surface-sunk);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 0.5rem);
+  --radius-md: calc(var(--radius) - 0.25rem);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 0.5rem);
+  --radius-2xl: calc(var(--radius) + 1rem);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+}
+
+/* ---------------------------------------------------------------
+   Base
+   Everything element-level lives in @layer base so Tailwind
+   utilities always win. An unlayered `a { color }` rule silently
+   overrides every text-* utility on links.
+   --------------------------------------------------------------- */
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100dvh;
+  }
+
+  /*
+   * Installed to the home screen the document must not rubber-band: there is
+   * no browser chrome behind it, so the overscroll exposes a bare gap.
+   *
+   * In a tab the same rule costs the browser's own pull-to-refresh, which is a
+   * gesture people expect there — hence the attribute, set before first paint.
+   */
+  html[data-standalone],
+  html[data-standalone] body {
+    overscroll-behavior-y: none;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+    /* Labels and article text are things you tap, not things you select. The
+       grey flash, the long-press callout and the selection magnifier all read
+       as "web page", and the magnifier in particular fights the tap-a-word
+       lookup in the reader. */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Typing still needs a caret, selection and the usual editing handles. */
+  input,
+  textarea,
+  [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Prose a learner may want to copy, look up elsewhere or hear read by the
+     system: a definition is worth selecting even though the article it came
+     from is not. Opts back into the platform's own long-press menu. */
+  .selectable {
+    -webkit-touch-callout: default;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Suppress the double-tap-to-zoom delay on anything pressable. */
+  a,
+  button,
+  [role='button'],
+  label,
+  summary {
+    touch-action: manipulation;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  input,
+  textarea {
+    background-color: transparent;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--ink-faint);
+  }
+
+  :focus-visible {
+    outline: 3px solid color-mix(in oklab, var(--brand-500) 55%, transparent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--brand-100);
+    color: var(--brand-700);
+  }
+}
+
+/* ---------------------------------------------------------------
+   Components
+   --------------------------------------------------------------- */
+
+@layer components {
+  /* Chunky pressable button. The bottom border is the "3D" lip;
+     pressing collapses it so the button physically sinks. */
+  .btn-3d {
+    position: relative;
+    border-bottom-width: 4px;
+    border-bottom-style: solid;
+    transition: transform 90ms ease, filter 90ms ease, border-bottom-width 90ms ease;
+  }
+
+  .btn-3d:active:not(:disabled) {
+    transform: translateY(3px);
+    border-bottom-width: 1px;
+  }
+
+  .btn-3d:disabled {
+    opacity: 0.45;
+    border-bottom-width: 4px;
+  }
+
+  .card-soft {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-card);
+  }
+
+  .kicker {
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* Reading surface for generated articles */
+  .reader {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    line-height: 1.55;
+    letter-spacing: 0.003em;
+    color: var(--ink);
+  }
+
+  .reader p + p {
+    margin-top: 0.85em;
+  }
+
+  /* Placeholder block that stands in for content still being written. */
+  .skeleton {
+    border-radius: 999px;
+    background-image: linear-gradient(
+      90deg,
+      var(--hairline) 0%,
+      var(--hairline-strong) 45%,
+      var(--hairline) 90%
+    );
+    background-size: 220% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+}
+
+/* ---------------------------------------------------------------
+   Utilities
+   --------------------------------------------------------------- */
+
+@layer utilities {
+  .safe-top {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .safe-bottom {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}
+
+/* ---------------------------------------------------------------
+   Motion
+   --------------------------------------------------------------- */
+
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(6px);
+  }
+  60% {
+    transform: scale(1.02) translateY(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+/* Indeterminate bar: a short fill crossing an empty track. The range is
+   tuned so the fill leaves on the right exactly as it re-enters on the
+   left, which keeps the track from ever reading as stalled. */
+@keyframes sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes flame-flicker {
+  0%,
+  100% {
+    transform: scale(1) rotate(-1deg);
+  }
+  50% {
+    transform: scale(1.06) rotate(1.5deg);
+  }
+}
+
+.animate-pop-in {
+  animation: pop-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-rise-in {
+  animation: rise-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-flame {
+  animation: flame-flicker 2.4s ease-in-out infinite;
+}
+
+.animate-sweep {
+  animation: sweep 1.3s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------
+   Navigation
+   Screens slide in the direction the history stack moved, the way a
+   pushed and popped view does natively. The whole block is scoped to
+   :active-view-transition-type(), so a browser that does not know the
+   selector drops these rules and keeps the default cross-fade.
+   --------------------------------------------------------------- */
+
+@keyframes page-in-from-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes page-out-to-left {
+  to {
+    /* Trailing rather than leaving outright: the screen underneath is being
+       uncovered, not thrown away. */
+    transform: translateX(-25%);
+  }
+}
+
+@keyframes page-in-from-left {
+  from {
+    transform: translateX(-25%);
+  }
+}
+
+@keyframes page-out-to-right {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+html:active-view-transition-type(forward)::view-transition-old(root),
+html:active-view-transition-type(forward)::view-transition-new(root),
+html:active-view-transition-type(back)::view-transition-old(root),
+html:active-view-transition-type(back)::view-transition-new(root) {
+  /* Both screens are opaque while they slide; blending them would show one
+     through the other. */
+  mix-blend-mode: normal;
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  animation-fill-mode: both;
+}
+
+html:active-view-transition-type(forward)::view-transition-old(root) {
+  animation-name: page-out-to-left;
+}
+
+html:active-view-transition-type(forward)::view-transition-new(root) {
+  /* Pushing: the arriving screen travels over the one it replaces. */
+  z-index: 1;
+  animation-name: page-in-from-right;
+}
+
+html:active-view-transition-type(back)::view-transition-old(root) {
+  /* Popping: the leaving screen slides off to reveal what was underneath. */
+  z-index: 1;
+  animation-name: page-out-to-right;
+}
+
+html:active-view-transition-type(back)::view-transition-new(root) {
+  animation-name: page-in-from-left;
+}
