@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { asBrowseSource, mineShare, weave } from '#/lib/browse'
+import { asBrowseSource, makeSeed, mineShare, seeded, weave } from '#/lib/browse'
 
 describe('weave', () => {
   it('puts one of the learner\'s words in every fourth slot', () => {
@@ -50,6 +50,37 @@ describe('mineShare', () => {
     expect(mineShare(12)).toBe(3)
     expect(mineShare(4)).toBe(1)
     expect(mineShare(3)).toBe(0)
+  })
+})
+
+describe('seeded', () => {
+  it('gives the same sequence to the same seed', () => {
+    const first = Array.from({ length: 5 }, seeded(42))
+    const again = Array.from({ length: 5 }, seeded(42))
+
+    expect(first).toEqual(again)
+  })
+
+  it('gives a different one to a different seed', () => {
+    expect(Array.from({ length: 5 }, seeded(42))).not.toEqual(
+      Array.from({ length: 5 }, seeded(43)),
+    )
+  })
+
+  it('stays between zero and one', () => {
+    const random = seeded(7)
+    for (let i = 0; i < 500; i += 1) {
+      const value = random()
+      expect(value).toBeGreaterThanOrEqual(0)
+      expect(value).toBeLessThan(1)
+    }
+  })
+})
+
+describe('makeSeed', () => {
+  it('never returns zero, which means "start a new visit"', () => {
+    expect(makeSeed(() => 0)).toBeGreaterThan(0)
+    expect(makeSeed(() => 0.999999)).toBeGreaterThan(0)
   })
 })
 

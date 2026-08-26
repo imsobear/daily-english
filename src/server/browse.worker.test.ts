@@ -19,8 +19,15 @@ beforeEach(async () => {
     .values({ userId: user, cefrLevel: 'B1', updatedAt: now })
 })
 
-function page(source: 'mine' | 'mix' | 'new', mineCursor = 0) {
-  return browsePageFor({ userId: user, source, level: 'B1', mineCursor })
+function page(source: 'mine' | 'mix' | 'new', mineCursor = 0, seed = 0) {
+  return browsePageFor({ userId: user, source, level: 'B1', mineCursor, seed })
+}
+
+/** Saved words that all sit at B1, so the level filter keeps every one. */
+function atLevel(count: number) {
+  return poolLevel('B1')
+    .slice(0, count)
+    .map((word) => word.headword)
 }
 
 describe('browsePageFor', () => {
@@ -108,16 +115,58 @@ describe('browsePageFor', () => {
     ])
   })
 
-  it('puts the shakiest words first', async () => {
+  it('still leans on the words they are losing', async () => {
     await saveWordsForUser(user, ['alpha', 'beta'], 'manual')
     await getDb()
       .update(words)
       .set({ familiarity: 0.9 })
       .where(eq(words.normalized, 'alpha'))
 
-    const { cards } = await page('mine')
+    // The order is a draw now rather than a ranking, so the claim is about
+    // which way it leans: a gap that wide is only rarely overturned.
+    let shakiestFirst = 0
+    for (let seed = 1; seed <= 10; seed += 1) {
+      const { cards } = await page('mine', 0, seed)
+      if (cards[0].headword === 'beta') shakiestFirst += 1
+    }
 
-    expect(cards.map((card) => card.headword)).toEqual(['beta', 'alpha'])
+    expect(shakiestFirst).toBeGreaterThanOrEqual(9)
+  })
+
+  it('shuffles the list, so two visits are not the same scroll', async () => {
+    const saved = atLevel(12)
+    await saveWordsForUser(user, saved, 'manual')
+
+    const first = await page('mine', 0, 101)
+    const second = await page('mine', 0, 202)
+
+    // The same words, arrived at in a different order.
+    expect(first.cards.map((card) => card.headword).sort()).toEqual(
+      [...saved].sort(),
+    )
+    expect(first.cards.map((card) => card.headword)).not.toEqual(
+      second.cards.map((card) => card.headword),
+    )
+  })
+
+  it('carries the order into the next page of the same visit', async () => {
+    await saveWordsForUser(user, atLevel(20), 'manual')
+
+    const first = await page('mine', 0, 7)
+    const second = await page('mine', first.mineCursor, first.seed)
+
+    // Eight words are still unseen; only past those does the feed come round.
+    const seen = new Set(first.cards.map((card) => card.normalized))
+    expect(second.cards.slice(0, 8).some((card) => seen.has(card.normalized)))
+      .toBe(false)
+  })
+
+  it('hands back the seed it used, even when it made one up', async () => {
+    await saveWordsForUser(user, atLevel(3), 'manual')
+
+    const { seed } = await page('mine')
+
+    expect(seed).toBeGreaterThan(0)
   })
 
   it('draws pool words from the learner\'s level only', async () => {
