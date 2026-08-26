@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import { BookOpen, Home, Layers, Settings } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -12,6 +12,10 @@ const tabs = [
 ] as const
 
 export function BottomNav() {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
+
   return (
     <nav
       // Named so a page transition captures the tab bar separately and leaves
@@ -34,6 +38,16 @@ export function BottomNav() {
               activeProps={{ className: 'text-brand-600' }}
               inactiveProps={{ className: 'text-ink-faint' }}
               activeOptions={{ exact: tab.to === '/' }}
+              /*
+               * Standing on the very screen the tab points at, a tap would
+               * push the same entry and slide the page against itself. The
+               * test is the exact path rather than the highlight, so a tab
+               * lit up by a page below it — a word, say, under Words — still
+               * takes you up to the list.
+               */
+              onClick={(event) => {
+                if (pathname === tab.to) event.preventDefault()
+              }}
             >
               {({ isActive }) => (
                 <>
