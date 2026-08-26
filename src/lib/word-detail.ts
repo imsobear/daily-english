@@ -24,6 +24,8 @@ export type WordSense = {
   pos: string
   definition: string
   example: string | null
+  /** The same definition in Chinese, revealed only when asked for. */
+  zh: string | null
 }
 
 export type WordRelative = {
@@ -36,8 +38,6 @@ export type WordDetail = {
   senses: WordSense[]
   collocations: string[]
   family: WordRelative[]
-  /** A few words of Chinese, hidden until asked for. */
-  zh: string | null
 }
 
 /**
@@ -60,6 +60,8 @@ export const WORD_DETAIL_MODEL = '@cf/openai/gpt-oss-120b'
  */
 const MAX_TOKENS = 2500
 
+const CHINESE = /[\u3400-\u9fff\uf900-\ufaff]/
+
 const MAX_SENSES = 3
 const MAX_COLLOCATIONS = 6
 const MAX_FAMILY = 4
@@ -71,16 +73,18 @@ Write the card for "${headword}".
 
 usage — the single most useful pattern this word appears in, written as a phrase a learner could read aloud. Ordinary words in the slots: "something", "somebody", "doing something". No plus signs, no blanks, and no grammar shorthand like "V-ing", "sth" or "N". Write "risk doing something", "at risk of something", "comply with something", "tell somebody about something". For an adjective, show the nouns it goes in front of: "a bleak outlook/future/picture". Give one natural sentence using exactly that pattern. This is the line on the front of the card, so pick the pattern a learner most needs.
 
-senses — up to ${MAX_SENSES}, most frequent first, each with its own example. Plain English a ${level} learner reads without a dictionary; never define the word with itself or with a rarer word. Examples should sound like real modern writing or speech, each in a different context from the others and from the usage sentence.
+senses — up to ${MAX_SENSES}, most frequent first. Three fields each:
+  "definition", in English: plain English a ${level} learner reads without a dictionary, never defining the word with itself or with a rarer word.
+  "example", in English: one sentence that sounds like real modern writing or speech, in a different context from the other senses and from the usage sentence.
+  "zh", in Chinese: that same definition again, as a dictionary gloss — a phrase, no subject, no full stop. For "risk": "风险，可能发生的坏事". Not a translation of the example, and not word by word off the English.
+The "zh" fields are the only Chinese anywhere in your answer. Writing a definition or an example in Chinese ruins the card.
 
 collocations — the partner words this one really appears with, most frequent first, three to six of them. Real two- or three-word phrases, not single words.
 
 family — other words built from the same stem: different parts of speech, not different forms of the same word. "risky" and "riskiness" belong; "risked", "risking", "riskier" do not. Leave the list empty rather than inventing a form nobody writes.
 
-zh — a short Chinese gloss, a few words covering the main senses, not a sentence.
-
 Reply with JSON only:
-{"usage":{"pattern":"...","example":"..."},"senses":[{"pos":"noun","definition":"...","example":"..."}],"collocations":["..."],"family":[{"word":"...","pos":"..."}],"zh":"..."}`
+{"usage":{"pattern":"...","example":"..."},"senses":[{"pos":"noun","definition":"...","example":"...","zh":"..."}],"collocations":["..."],"family":[{"word":"...","pos":"..."}]}`
 }
 
 /** The shape of the model call, kept here so the tests can read it. */
@@ -186,8 +190,24 @@ export function parseWordDetail(
     .flatMap((item) => {
       const sense = item as Record<string, unknown>
       const definition = text(sense?.definition, 200)
-      const pos = text(sense?.pos, 24)
-      return definition ? [{ pos: pos ?? '', definition, example: text(sense?.example, 240) }] : []
+      // Asked for a card in English and a gloss in Chinese, the model
+      // sometimes answers the whole sense in Chinese. A definition a learner
+      // cannot read is worse than the plain dictionary one it would replace.
+      if (!definition || CHINESE.test(definition)) return []
+      const example = text(sense?.example, 240)
+      const zh = text(sense?.zh, 80)
+      return [
+        {
+          pos: text(sense?.pos, 24) ?? '',
+          definition,
+          example: example && !CHINESE.test(example) ? example : null,
+          // A gloss belongs beside the definition; a translated example
+          // sentence beside it only confuses what is being defined. Told not
+          // to, the model does it anyway often enough to be worth catching,
+          // and gives itself away every time by ending like a sentence.
+          zh: zh && CHINESE.test(zh) && !/[。！？.!?]$/.test(zh) ? zh : null,
+        },
+      ]
     })
     .slice(0, MAX_SENSES)
   if (senses.length === 0) return null
@@ -224,8 +244,12 @@ export function parseWordDetail(
       ),
     ].slice(0, MAX_COLLOCATIONS),
     family,
-    zh: text(source.zh, 40),
   }
+}
+
+/** Whether there is any Chinese to offer, and so any button to offer it with. */
+export function hasChinese(detail: WordDetail | null | undefined) {
+  return Boolean(detail?.senses.some((sense) => sense.zh))
 }
 
 function asArray(value: unknown): unknown[] {
@@ -285,6 +309,30 @@ export async function describeWord(input: {
 
   const body = (await response.json()) as { result?: unknown }
   return parseWordDetail(input.headword, modelText(body.result ?? body))
+}
+
+/**
+ * A card, with one second go if little of the first one survived.
+ *
+ * Some words send the model into Chinese for a whole sense, or into
+ * translating the example instead of the definition, and the parsing throws
+ * that away — leaving a thin card, or none. The pass skips whatever already
+ * has a card, so there is no later run to make it good. Asking twice costs a
+ * second call for a minority of words and settles it; twice unlucky is an
+ * answer too, and that card goes out in English.
+ */
+export async function describeWordTwice(input: {
+  headword: string
+  level: CefrLevel
+  accountId: string | null
+  apiKey: string | null
+  mockUrl: string | null
+}) {
+  const first = await describeWord(input)
+  if (first && hasChinese(first)) return first
+  const second = await describeWord(input)
+  if (second && hasChinese(second)) return second
+  return first ?? second
 }
 
 export function readWorkersAi(env: {

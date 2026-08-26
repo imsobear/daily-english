@@ -3,6 +3,7 @@ import { ChevronLeft, Trash2, Volume2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { Button, Card, ProgressRing, Spinner } from '#/components/ui'
+import { hasChinese } from '#/lib/word-detail'
 import { deleteWord, getWord, refreshWord } from '#/server/words'
 
 export const Route = createFileRoute('/_app/words/$wordId')({
@@ -78,9 +79,11 @@ function WordCardPage() {
         partOfSpeech: sense.pos,
         definition: sense.definition,
         example: sense.example,
+        zh: sense.zh,
       }))
-    : word.definitions.map((sense) => ({ ...sense, example: null }))
+    : word.definitions.map((sense) => ({ ...sense, example: null, zh: null }))
   const legacyExamples = detail ? [] : word.examples
+  const chinese = hasChinese(detail)
 
   return (
     <div className="flex min-h-full flex-col">
@@ -178,19 +181,49 @@ function WordCardPage() {
               and every sense below already carries a sentence.
             */}
             <section>
-              <h3 className="kicker mb-2 px-1">Meanings</h3>
-              <ul className="space-y-2">
+              <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                <h3 className="kicker">Meanings</h3>
+                {/*
+                  The translation lives with the thing it translates, and stays
+                  out of sight until asked for: English in plain view beside its
+                  Chinese is English nobody reads.
+                */}
+                {chinese ? (
+                  <button
+                    type="button"
+                    onClick={() => setGloss((shown) => !shown)}
+                    aria-pressed={gloss}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-bold ${
+                      gloss
+                        ? 'border-transparent bg-surface-sunk text-ink-soft'
+                        : 'border-hairline text-ink-faint'
+                    }`}
+                  >
+                    中文
+                  </button>
+                ) : null}
+              </div>
+              <ul className="space-y-1.5">
                 {meanings.map((sense, index) => (
                   <li
                     key={`${sense.partOfSpeech}-${index}`}
-                    className="card-soft px-4 py-3"
+                    className="card-soft px-3.5 py-2.5"
                   >
-                    <p className="kicker">{sense.partOfSpeech}</p>
-                    <p className="mt-1 text-[1.0625rem] leading-relaxed">
+                    <p className="text-[0.9375rem] leading-snug">
+                      {sense.partOfSpeech ? (
+                        <span className="kicker mr-1.5 inline">
+                          {sense.partOfSpeech}{' '}
+                        </span>
+                      ) : null}
                       {sense.definition}
                     </p>
+                    {gloss && sense.zh ? (
+                      <p className="mt-1 text-[0.9375rem] leading-snug text-ink-soft">
+                        {sense.zh}
+                      </p>
+                    ) : null}
                     {sense.example ? (
-                      <p className="mt-1.5 text-[1rem] italic leading-relaxed text-ink-soft">
+                      <p className="mt-1 text-sm italic leading-snug text-ink-soft">
                         {sense.example}
                       </p>
                     ) : null}
@@ -231,25 +264,6 @@ function WordCardPage() {
                     </li>
                   ))}
                 </ul>
-              </section>
-            ) : null}
-
-            {/*
-              Behind a tap, like on the feed: the English is the exercise, and
-              a translation in plain sight is the only thing that gets read.
-            */}
-            {detail?.zh ? (
-              <section>
-                <h3 className="kicker mb-2 px-1">中文</h3>
-                {gloss ? (
-                  <p className="rounded-2xl bg-surface-sunk px-4 py-3 text-[1.0625rem] leading-relaxed">
-                    {detail.zh}
-                  </p>
-                ) : (
-                  <Button tone="neutral" size="sm" onClick={() => setGloss(true)}>
-                    Show the Chinese
-                  </Button>
-                )}
               </section>
             ) : null}
 

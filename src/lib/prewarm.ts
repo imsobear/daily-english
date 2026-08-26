@@ -22,7 +22,7 @@ import type { LessonEnv } from '#/lib/generate-lesson'
 import { CEFR_LEVELS, type CefrLevel } from '#/lib/settings'
 import { poolEntry, poolLevel } from '#/lib/vocabulary'
 import {
-  describeWord,
+  describeWordTwice,
   readWorkersAi,
   serializeWordDetail,
 } from '#/lib/word-detail'
@@ -113,7 +113,7 @@ async function describe(
   entry: Entry | undefined,
   normalized: string,
 ) {
-  const detail = await describeWord({
+  const detail = await describeWordTwice({
     headword: entry?.headword ?? normalized,
     level: levelOf(normalized),
     ...readWorkersAi(env),

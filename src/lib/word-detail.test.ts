@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  hasChinese,
   modelText,
   parseWordDetail,
   readWordDetail,
@@ -15,11 +16,11 @@ const CARD = {
       pos: 'noun',
       definition: 'the possibility that something bad will happen',
       example: 'The risk of flooding has risen.',
+      zh: '风险，可能发生的坏事',
     },
   ],
   collocations: ['take a risk', 'risk factor'],
   family: [{ word: 'risky', pos: 'adjective' }],
-  zh: '风险；冒险',
 }
 
 describe('parseWordDetail', () => {
@@ -29,7 +30,7 @@ describe('parseWordDetail', () => {
     expect(detail?.usage?.pattern).toBe('at risk of something')
     expect(detail?.senses).toHaveLength(1)
     expect(detail?.collocations).toEqual(['take a risk', 'risk factor'])
-    expect(detail?.zh).toBe('风险；冒险')
+    expect(detail?.senses[0].zh).toBe('风险，可能发生的坏事')
   })
 
   it('digs the JSON out of whatever the model wrapped it in', () => {
@@ -161,6 +162,7 @@ describe('parseWordDetail', () => {
           pos: 'verb',
           definition: `sense ${i}`,
           example: 'x',
+          zh: '义项',
         })),
         collocations: Array.from({ length: 12 }, (_, i) => `phrase ${i}`),
       }),
@@ -168,6 +170,88 @@ describe('parseWordDetail', () => {
 
     expect(detail?.senses).toHaveLength(3)
     expect(detail?.collocations).toHaveLength(6)
+  })
+})
+
+describe('the Chinese on a sense', () => {
+  function zhOf(zh: string) {
+    return parseWordDetail(
+      'risk',
+      JSON.stringify({ ...CARD, senses: [{ ...CARD.senses[0], zh }] }),
+    )?.senses[0].zh
+  }
+
+  it('keeps a gloss', () => {
+    expect(zhOf('风险，可能发生的坏事')).toBe('风险，可能发生的坏事')
+    expect(zhOf('使…面临危险或损失')).toBe('使…面临危险或损失')
+  })
+
+  it('throws out an English answer in the Chinese slot', () => {
+    expect(zhOf('a chance of harm')).toBeNull()
+  })
+
+  it('throws out a translated example sentence', () => {
+    // Asked for the definition, the model translates the example instead often
+    // enough to be worth catching, and always ends it like a sentence.
+    expect(zhOf('她决定冒险搬到一座新城市。')).toBeNull()
+    expect(zhOf('The risk of flooding has risen.')).toBeNull()
+  })
+})
+
+describe('a sense answered in Chinese', () => {
+  it('is dropped, so no card ever defines a word in Chinese', () => {
+    const detail = parseWordDetail(
+      'recall',
+      JSON.stringify({
+        ...CARD,
+        senses: [
+          { pos: 'verb', definition: '把记忆带回脑中', zh: '把记忆带回脑中' },
+          { ...CARD.senses[0] },
+        ],
+      }),
+    )
+    expect(detail?.senses).toHaveLength(1)
+    expect(detail?.senses[0].definition).toBe(CARD.senses[0].definition)
+  })
+
+  it('takes the whole card with it when no sense is left in English', () => {
+    const detail = parseWordDetail(
+      'recall',
+      JSON.stringify({
+        ...CARD,
+        senses: [{ pos: 'verb', definition: '把记忆带回脑中', zh: '想起' }],
+      }),
+    )
+    expect(detail).toBeNull()
+  })
+
+  it('drops an example written in Chinese but keeps the sense', () => {
+    const detail = parseWordDetail(
+      'risk',
+      JSON.stringify({
+        ...CARD,
+        senses: [{ ...CARD.senses[0], example: '她冒了很大的风险。' }],
+      }),
+    )
+    expect(detail?.senses[0].example).toBeNull()
+    expect(detail?.senses[0].definition).toBe(CARD.senses[0].definition)
+  })
+})
+
+describe('hasChinese', () => {
+  it('is true only when some sense has a translation to show', () => {
+    const detail = parseWordDetail('risk', JSON.stringify(CARD))
+    expect(hasChinese(detail)).toBe(true)
+
+    const bare = parseWordDetail(
+      'risk',
+      JSON.stringify({
+        ...CARD,
+        senses: [{ pos: 'noun', definition: 'a chance of harm' }],
+      }),
+    )
+    expect(hasChinese(bare)).toBe(false)
+    expect(hasChinese(null)).toBe(false)
   })
 })
 

@@ -10,6 +10,7 @@ import {
   Spinner,
 } from '#/components/ui'
 import { BROWSE_SOURCES, type BrowseSource } from '#/lib/browse'
+import { hasChinese } from '#/lib/word-detail'
 import {
   getBrowseMore,
   getBrowseStart,
@@ -349,18 +350,27 @@ function WordSlide({
   const percent =
     card.familiarity != null ? Math.round(card.familiarity * 100) : null
   const detail = card.detail
-  // A snap card cannot scroll, so only what fits a phone stays on it.
+  const chinese = hasChinese(detail)
+  /*
+   * Meanings and nothing else. A card is read in a second on the way past, and
+   * everything that was competing with the definitions for that second —
+   * patterns, collocation chips — is a tap away on the word page, where there
+   * is room to take them in.
+   *
+   * A snap card cannot scroll either, so only what fits a phone stays on it.
+   */
   const senses = detail
     ? detail.senses.slice(0, 3).map((sense) => ({
         partOfSpeech: sense.pos,
         definition: sense.definition,
+        example: sense.example,
+        zh: sense.zh,
       }))
-    : card.definitions.slice(0, 3)
-  const samples = detail
-    ? detail.usage
-      ? []
-      : detail.senses.flatMap((sense) => (sense.example ? [sense.example] : [])).slice(0, 1)
-    : card.examples.slice(0, 2)
+    : card.definitions
+        .slice(0, 3)
+        .map((sense) => ({ ...sense, example: null, zh: null }))
+  // Older entries keep their examples in a list of their own.
+  const samples = detail ? [] : card.examples.slice(0, 2)
 
   return (
     <article className="flex h-full snap-start snap-always flex-col overflow-hidden px-4 pt-1 pb-3">
@@ -415,18 +425,27 @@ function WordSlide({
                 No definition for this one yet.
               </p>
             ) : (
-              <ul className="space-y-1.5">
+              <ul className="space-y-2">
                 {senses.map((sense, index) => (
-                  <li
-                    key={`${sense.partOfSpeech}-${index}`}
-                    className="text-[0.9375rem] leading-snug"
-                  >
-                    {sense.partOfSpeech ? (
-                      <span className="kicker mr-1.5 inline">
-                        {sense.partOfSpeech}{' '}
-                      </span>
+                  <li key={`${sense.partOfSpeech}-${index}`}>
+                    <p className="text-[0.9375rem] leading-snug">
+                      {sense.partOfSpeech ? (
+                        <span className="kicker mr-1.5 inline">
+                          {sense.partOfSpeech}{' '}
+                        </span>
+                      ) : null}
+                      <span className="selectable">{sense.definition}</span>
+                    </p>
+                    {gloss && sense.zh ? (
+                      <p className="selectable mt-0.5 text-[0.9375rem] leading-snug text-ink-soft">
+                        {sense.zh}
+                      </p>
                     ) : null}
-                    <span className="selectable">{sense.definition}</span>
+                    {sense.example ? (
+                      <p className="selectable mt-0.5 text-sm italic leading-snug text-ink-soft">
+                        {sense.example}
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -444,50 +463,24 @@ function WordSlide({
               </ul>
             ) : null}
 
-            {detail?.usage ? (
-              <div className="mt-3 rounded-2xl bg-surface-sunk px-3.5 py-2.5">
-                <p className="kicker">Used as</p>
-                <p className="selectable mt-0.5 text-[0.9375rem] font-extrabold leading-snug">
-                  {detail.usage.pattern}
-                </p>
-                <p className="selectable mt-1 text-sm italic leading-snug text-ink-soft">
-                  {detail.usage.example}
-                </p>
-              </div>
-            ) : null}
-
-            {detail && detail.collocations.length > 0 ? (
-              <ul className="mt-2.5 flex flex-wrap gap-1.5">
-                {detail.collocations.slice(0, 4).map((phrase) => (
-                  <li
-                    key={phrase}
-                    className="selectable rounded-full border border-hairline px-2.5 py-1 text-xs font-bold text-ink-soft"
-                  >
-                    {phrase}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
             {/*
-              Hidden until asked for. The English above is the exercise; a
-              translation sitting next to it is read first and the English
-              never is. One tap is a small enough price for being stuck.
+              Under the definitions it translates, and out of sight until asked
+              for: English in plain view beside its Chinese is English nobody
+              reads. One tap is a small enough price for being stuck.
             */}
-            {detail?.zh ? (
-              gloss ? (
-                <p className="selectable mt-2.5 text-sm text-ink-soft">
-                  {detail.zh}
-                </p>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setGloss(true)}
-                  className="mt-2.5 rounded-full border border-hairline px-2.5 py-1 text-xs font-bold text-ink-faint"
-                >
-                  中文
-                </button>
-              )
+            {chinese ? (
+              <button
+                type="button"
+                onClick={() => setGloss((shown) => !shown)}
+                aria-pressed={gloss}
+                className={`mt-3 rounded-full border px-2.5 py-1 text-xs font-bold ${
+                  gloss
+                    ? 'border-transparent bg-surface-sunk text-ink-soft'
+                    : 'border-hairline text-ink-faint'
+                }`}
+              >
+                中文
+              </button>
             ) : null}
           </div>
         )}

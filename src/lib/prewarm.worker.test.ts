@@ -9,10 +9,11 @@ import { readWordDetail, type WordDetail } from '#/lib/word-detail'
 
 const CARD: WordDetail = {
   usage: { pattern: 'at thing of something', example: 'A thing of note.' },
-  senses: [{ pos: 'noun', definition: 'a thing', example: 'A thing.' }],
+  senses: [
+    { pos: 'noun', definition: 'a thing', example: 'A thing.', zh: '东西' },
+  ],
   collocations: ['a thing'],
   family: [],
-  zh: '东西',
 }
 
 async function seed(word: string, detail: WordDetail | null) {
