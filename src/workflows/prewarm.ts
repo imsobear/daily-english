@@ -43,16 +43,29 @@ export class PrewarmWorkflow extends WorkflowEntrypoint<
     const speak = event.payload?.speak ?? true
 
     let total: PrewarmTally = EMPTY_TALLY
+    let done = 0
 
     for (const batch of prewarmPlan(levels)) {
       const tally = await step.do(
         `warm-${batch.level}-${batch.offset}`,
-        // One retry: the failures worth repeating here are a timeout or a
-        // provider hiccup, and every word is skipped on the way back through.
-        { retries: { limit: 1, delay: '10 seconds', backoff: 'constant' } },
+        // The failures worth repeating are a provider hiccup or a database
+        // that needs a moment, and every finished word is skipped on the way
+        // back through, so a retry is cheap.
+        { retries: { limit: 3, delay: '15 seconds', backoff: 'exponential' } },
         () => prewarmBatch(this.env, batch.words, { speak }),
       )
       total = addTally(total, tally)
+      done += 1
+
+      /*
+       * A word costs around ten subrequests — dictionary, model, speech, R2,
+       * and the database either side — and a Worker invocation is allowed a
+       * thousand. Left alone, a few batches in a row exhaust the budget and
+       * every query after that fails until the invocation rotates, which is
+       * exactly how the first full run died. Sleeping suspends the workflow,
+       * so the next batch resumes with a fresh allowance.
+       */
+      if (done % 3 === 0) await step.sleep(`breathe-${done}`, '2 seconds')
     }
 
     console.info(JSON.stringify({ prewarm: true, ...total }))

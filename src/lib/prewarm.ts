@@ -16,6 +16,7 @@ import {
   loadEntries,
   needsBetterSenses,
   type EntriesDb,
+  type Entry,
 } from '#/lib/entries'
 import type { LessonEnv } from '#/lib/generate-lesson'
 import { CEFR_LEVELS, type CefrLevel } from '#/lib/settings'
@@ -107,15 +108,22 @@ export async function prewarmBatch(
   const db = drizzle(env.DB, { schema }) as EntriesDb
   const config = isDeepSeekConfigured(env) ? readDeepSeekConfig(env) : null
   const normalized = headwords.map(normalizeHeadword)
-  const entries = await loadEntries(db, normalized)
+
+  // A batch that cannot even read the table is a batch where every word is
+  // looked up the slow way and probably fails; that is a tally to report, not
+  // an exception to kill a two hour run with.
+  const entries = await loadEntries(db, normalized).catch((error: unknown) => {
+    console.error('prewarm: could not read entries', error)
+    return new Map<string, Entry>()
+  })
 
   const tally: PrewarmTally = { ...EMPTY_TALLY, seen: headwords.length }
 
   await inBatches(normalized, async (word) => {
-    const entry = entries.get(word)
+    let entry = entries.get(word)
     try {
       if (needsBetterSenses(entry)) {
-        await ensureEntry(db, word, config)
+        entry = (await ensureEntry(db, word, config)) ?? entry
         tally.defined += 1
       }
     } catch (error) {
@@ -125,19 +133,12 @@ export async function prewarmBatch(
 
     if (!speak) return
     const key = audioKeyFor(word)
+    if (entry?.audioKey === key) return
     try {
-      // The entry may have only just been written, so the audio key is read
-      // back rather than taken from the batch load above.
-      const current = await db.query.dictionaryEntries.findFirst({
-        where: eq(dictionaryEntries.normalized, word),
-        columns: { audioKey: true, headword: true },
-      })
-      if (current?.audioKey === key) return
-
       const { audio, contentType } = await synthesizeSpeech({
         // The trailing period keeps the model from clipping the final
         // consonant, matching what the word-audio endpoint does.
-        text: `${current?.headword ?? word}.`,
+        text: `${entry?.headword ?? word}.`,
         mockUrl: readTtsMockUrl(env),
         apiKey: readOpenAiApiKey(env),
       })
