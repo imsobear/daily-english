@@ -54,6 +54,12 @@ export type BrowseStart = BrowsePage & {
   source: BrowseSource
   level: CefrLevel
   /**
+   * Saved words in total, at any level. An empty "Mine" feed means something
+   * different for a learner with none than for one whose words are all at a
+   * level they have since moved off.
+   */
+  savedTotal: number
+  /**
    * The level to suggest moving up to, once enough words here are known.
    * Null the rest of the time, which is nearly always.
    */
@@ -113,40 +119,64 @@ function cardOf(input: {
 }
 
 /**
- * The learner's own words, shakiest first and wrapping at the end.
+ * Whether one of the learner's own words belongs in a feed at this level.
+ *
+ * A word the pool has never carried — typed in, or tapped out of an article —
+ * has no level to disagree with, and it is the most personal thing in the
+ * list, so it stays.
+ */
+function atLevel(normalized: string, level: CefrLevel) {
+  const pool = poolEntry(normalized)
+  return !pool || pool.level === level
+}
+
+/**
+ * The learner's own words at this level, shakiest first and wrapping at the
+ * end.
  *
  * Familiarity ascending puts the words they are losing at the front, and a
  * feed with no end has to come back round eventually — an idle scroll through
- * forty saved words should keep working at card two hundred.
+ * forty saved words should keep working at card two hundred. The level filter
+ * happens here rather than in SQL because only the pool file knows what level
+ * a word is; the `words` table just has headwords.
  */
-async function mineCards(userId: string, cursor: number, wanted: number) {
+async function mineCards(
+  userId: string,
+  level: CefrLevel,
+  cursor: number,
+  wanted: number,
+) {
   const db = getDb()
   if (wanted <= 0) return { cards: [] as BrowseCard[], cursor, exhausted: true }
 
-  const read = async (offset: number, limit: number) =>
-    db.query.words.findMany({
-      where: eq(words.userId, userId),
-      orderBy: [asc(words.familiarity), asc(words.createdAt)],
-      limit,
-      offset,
-    })
-
-  let rows = await read(cursor, wanted)
-  let next = cursor + rows.length
-  if (rows.length < wanted && cursor > 0) {
-    const wrapped = await read(0, wanted - rows.length)
-    rows = [...rows, ...wrapped]
-    next = wrapped.length
-  }
-  if (rows.length === 0) {
+  const rows = await db.query.words.findMany({
+    where: eq(words.userId, userId),
+    orderBy: [asc(words.familiarity), asc(words.createdAt)],
+    columns: {
+      id: true,
+      headword: true,
+      normalized: true,
+      familiarity: true,
+    },
+  })
+  const eligible = rows.filter((row) => atLevel(row.normalized, level))
+  if (eligible.length === 0) {
     return { cards: [] as BrowseCard[], cursor: 0, exhausted: true }
   }
 
+  // Never the same word twice on one screenful, however short the list is.
+  const take = Math.min(wanted, eligible.length)
+  const start = cursor % eligible.length
+  const picked = Array.from(
+    { length: take },
+    (_, i) => eligible[(start + i) % eligible.length],
+  )
+
   const entries = await loadEntries(
     db,
-    rows.map((row) => row.normalized),
+    picked.map((row) => row.normalized),
   )
-  const cards = rows.map((row) => {
+  const cards = picked.map((row) => {
     const pool = poolEntry(row.normalized)
     return cardOf({
       normalized: row.normalized,
@@ -158,7 +188,11 @@ async function mineCards(userId: string, cursor: number, wanted: number) {
       familiarity: row.familiarity,
     })
   })
-  return { cards, cursor: next, exhausted: false }
+  return {
+    cards,
+    cursor: (start + take) % eligible.length,
+    exhausted: false,
+  }
 }
 
 /**
@@ -203,6 +237,9 @@ async function freshCards(userId: string, level: CefrLevel, wanted: number) {
     offered: offers
       .filter((row) => row.verdict !== 'known')
       .map((row) => row.normalized),
+    // Every card is labelled with its level, so every card is at the level
+    // the learner set. The add-words screen still casts the wider net.
+    exact: true,
     limit: wanted * 3,
   })
   if (picks.length === 0) return { cards: [] as BrowseCard[], exhausted: true }
@@ -302,7 +339,12 @@ export async function browsePageFor(input: {
   mineCursor: number
 }): Promise<BrowsePage> {
   if (input.source === 'mine') {
-    const mine = await mineCards(input.userId, input.mineCursor, PAGE)
+    const mine = await mineCards(
+      input.userId,
+      input.level,
+      input.mineCursor,
+      PAGE,
+    )
     return { cards: mine.cards, mineCursor: mine.cursor, end: mine.exhausted }
   }
 
@@ -321,7 +363,12 @@ export async function browsePageFor(input: {
    * get a full page, and so should someone whose level has run dry. Each side
    * covers for the other rather than leaving a short page behind.
    */
-  const mine = await mineCards(input.userId, input.mineCursor, mineShare(PAGE))
+  const mine = await mineCards(
+    input.userId,
+    input.level,
+    input.mineCursor,
+    mineShare(PAGE),
+  )
   const fresh = await freshCards(
     input.userId,
     input.level,
@@ -331,7 +378,7 @@ export async function browsePageFor(input: {
   const short = PAGE - mine.cards.length - fresh.cards.length
   const extra =
     short > 0 && !mine.exhausted
-      ? await mineCards(input.userId, mine.cursor, short)
+      ? await mineCards(input.userId, input.level, mine.cursor, short)
       : { cards: [] as BrowseCard[], cursor: mine.cursor, exhausted: true }
 
   return {
@@ -361,10 +408,16 @@ export const getBrowseStart = createServerFn({ method: 'GET' }).handler(
       mineCursor: 0,
     })
 
+    const saved = await db.query.words.findMany({
+      where: eq(words.userId, user.id),
+      columns: { id: true },
+    })
+
     return {
       ...page,
       source,
       level: settings.cefrLevel,
+      savedTotal: saved.length,
       levelHint: await levelHint(user.id, settings.cefrLevel),
     }
   },

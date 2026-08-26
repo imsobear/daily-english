@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { getDb } from '#/db'
 import { userSettings, users, wordOffers, words } from '#/db/schema'
+import { poolEntry, poolLevel } from '#/lib/vocabulary'
 import { browsePageFor } from '#/server/browse'
 import { saveWordsForUser } from '#/server/words'
 
@@ -116,6 +117,33 @@ describe('browsePageFor', () => {
     const { cards } = await page('mine')
 
     expect(cards.map((card) => card.headword)).toEqual(['beta', 'alpha'])
+  })
+
+  it('draws pool words from the learner\'s level only', async () => {
+    const { cards } = await page('new')
+
+    expect(cards.map((card) => card.level)).toEqual(Array(12).fill('B1'))
+  })
+
+  it('leaves out saved words from another level', async () => {
+    const easier = poolLevel('A2')[0].headword
+    const here = poolLevel('B1')[0].headword
+    await saveWordsForUser(user, [easier, here], 'manual')
+
+    const { cards } = await page('mine')
+
+    expect(cards.map((card) => card.headword)).toEqual([here])
+  })
+
+  it('keeps saved words the pool has never heard of', async () => {
+    // Typed in or tapped out of an article: no level to disagree with.
+    expect(poolEntry('zugzwang')).toBeNull()
+    await saveWordsForUser(user, ['zugzwang'], 'manual')
+
+    const { cards } = await page('mine')
+
+    expect(cards.map((card) => card.headword)).toEqual(['zugzwang'])
+    expect(cards[0].level).toBeNull()
   })
 
   it('reports the end when there is nothing to show', async () => {

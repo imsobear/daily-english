@@ -193,15 +193,31 @@ function BrowseScreen() {
       {cards.length === 0 ? (
         <div className="p-3.5">
           <EmptyState
-            title={source === 'mine' ? 'No words yet' : 'Nothing left here'}
+            title={
+              source !== 'mine'
+                ? 'Nothing left here'
+                : start.savedTotal > 0
+                  ? `None of your words are ${start.level}`
+                  : 'No words yet'
+            }
             body={
-              source === 'mine'
-                ? 'Save a few words and they will show up here to flick through.'
-                : 'You have seen everything at your level. Try raising it in settings.'
+              source !== 'mine'
+                ? 'You have seen everything at your level. Try raising it in settings.'
+                : start.savedTotal > 0
+                  ? `Every card here is ${start.level}, and your saved words sit at other levels. Change your level in settings, or save some more.`
+                  : 'Save a few words and they will show up here to flick through.'
             }
             action={
-              <ButtonLink to={source === 'mine' ? '/words/add' : '/settings'}>
-                {source === 'mine' ? 'Add words' : 'Open settings'}
+              <ButtonLink
+                to={
+                  source === 'mine' && start.savedTotal === 0
+                    ? '/words/add'
+                    : '/settings'
+                }
+              >
+                {source === 'mine' && start.savedTotal === 0
+                  ? 'Add words'
+                  : 'Open settings'}
               </ButtonLink>
             }
           />

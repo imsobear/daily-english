@@ -117,11 +117,18 @@ function shuffle<T>(items: T[], random: () => number) {
   return out
 }
 
-/** The learner's level plus the one below it, hardest first. */
-function window(level: CefrLevel) {
+/**
+ * The learner's level plus the one below it, hardest first.
+ *
+ * `exact` drops the easier half. Filling a word list is served by a wider net
+ * — plenty of useful words sit a level below where a learner meets them — but
+ * a feed labels every card with its level, and a B1 learner scrolling past
+ * A2 cards reads that as the app ignoring the setting.
+ */
+function window(level: CefrLevel, exact = false) {
   const rank = CEFR_LEVELS.indexOf(level)
   const levels: [CefrLevel, number][] = [[level, 1]]
-  if (rank > 0) levels.push([CEFR_LEVELS[rank - 1], EASIER_PENALTY])
+  if (!exact && rank > 0) levels.push([CEFR_LEVELS[rank - 1], EASIER_PENALTY])
   return levels
 }
 
@@ -140,6 +147,8 @@ export function pickRecommendations(input: {
   owned: Iterable<string>
   /** Already shown to this learner, oldest first. */
   offered?: Iterable<string>
+  /** Draw from this level only, rather than this level and the one below. */
+  exact?: boolean
   limit?: number
   random?: () => number
 }): RecommendedWord[] {
@@ -154,7 +163,7 @@ export function pickRecommendations(input: {
   // after it.
   const entries: PoolWord[] = []
   const known = new Map<string, PoolWord>()
-  for (const [level, penalty] of window(input.level)) {
+  for (const [level, penalty] of window(input.level, input.exact)) {
     for (const word of pool().get(level) ?? []) {
       known.set(word.headword, word)
       if (owned.has(word.headword) || seen.has(word.headword)) continue
