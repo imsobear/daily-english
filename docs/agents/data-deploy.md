@@ -36,13 +36,12 @@ what stops a shuffle from repeating itself between visits. The `verdict` column
 separates a word that merely scrolled past in the Explore feed from one the
 learner retired with "Know it", which never comes back.
 
-## Warming the pool
+## Warming words
 
-The Explore feed shows pool words as full cards — senses with their Chinese and
-examples, IPA, audio — but the pool file carries only headwords. Defining one
-costs a dictionary fetch, speaking it costs TTS, and writing its card costs half
-a minute of a large model. Done on demand that is a feed of blanks, so it is
-done in advance:
+Every card in the app is written by this pass — nothing on the request path
+asks the model, because a card is half a minute of a large model and a share of
+a daily allowance. It goes at the words learners have saved first, then the
+pool, whose file carries only headwords:
 
 ```bash
 pnpm exec wrangler workflows trigger vocabulary-prewarm                  # everything
@@ -58,11 +57,11 @@ around 230 steps and several hours, and a dollar or two of OpenAI for the audio.
 The cards are rationed separately: a run writes a hundred of them and stops,
 which is about three quarters of the free Workers AI allowance for a day and
 none of a bill. A cron runs the pass nightly at 00:10 UTC with `speak: false`,
-so the pool cards itself a hundred words at a time and nobody has to remember;
-each run picks up where the last stopped. `'{"describe":500}'` spends past the
+so words card themselves a hundred at a time and nobody has to remember; each
+run picks up where the last stopped. `'{"describe":500}'` spends past the
 allowance on purpose, at roughly a dollar per thousand cards. Everything here is
 shared by every learner, so it is paid once. Run it by hand after `pnpm vocab`
-adds words, if you would rather not wait a night.
+adds words, or when a word saved today should not wait for tonight.
 
 The cards come from `@cf/openai/gpt-oss-120b` over the REST API rather than
 through an `ai` binding. The binding has no local implementation, so declaring

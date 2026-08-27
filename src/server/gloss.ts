@@ -1,16 +1,14 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, eq, inArray } from 'drizzle-orm'
 
-import { getDb, getEnv, waitUntil } from '#/db'
+import { getDb } from '#/db'
 import { words } from '#/db/schema'
 import { normalizeHeadword } from '#/lib/dictionary'
 import {
   ensureEntry,
   entrySenses,
-  fillEntry,
   isDefined,
   loadEntries,
-  needsCard,
   type EntriesDb,
 } from '#/lib/entries'
 import { TTS_VOICE } from '#/lib/ai'
@@ -82,7 +80,6 @@ export const glossWord = createServerFn({ method: 'POST' })
   .handler(async ({ data }): Promise<Gloss> => {
     const user = await requireUser()
     const db = getDb()
-    const env = getEnv()
 
     const headword = await dictionaryForm(db, user.id, data.headword)
 
@@ -93,17 +90,6 @@ export const glossWord = createServerFn({ method: 'POST' })
         columns: { id: true },
       }),
     ])
-
-    // The sheet needs a definition now, and the dictionary above has given it
-    // one. The card the model writes is for the next time this word is met —
-    // on the word page, or in the feed — so it is written after the response.
-    if (needsCard(entry)) {
-      waitUntil(
-        fillEntry(env, db, headword).catch((error: unknown) => {
-          console.error('Could not describe', headword, error)
-        }),
-      )
-    }
 
     const senses = entrySenses(entry)
     return {

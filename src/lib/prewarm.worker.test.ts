@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { getDb, getEnv } from '#/db'
-import { dictionaryEntries } from '#/db/schema'
+import { dictionaryEntries, users, words } from '#/db/schema'
 import { TTS_VOICE } from '#/lib/ai'
 import { entrySenses, loadEntry } from '#/lib/entries'
 import type { LessonEnv } from '#/lib/generate-lesson'
-import { prewarmBatch } from '#/lib/prewarm'
+import { demandedWords, prewarmBatch } from '#/lib/prewarm'
 
 const CARD = {
   senses: [
@@ -136,5 +136,39 @@ describe('prewarmBatch', () => {
     // tomorrow's run reaches.
     expect(tally.described).toBe(2)
     expect(calls).toHaveLength(2)
+  })
+})
+
+describe('demandedWords', () => {
+  it('offers the saved words the model still owes a card, oldest first', async () => {
+    const db = getDb()
+    const owner = `saver${crypto.randomUUID().slice(0, 8)}`
+    await db
+      .insert(users)
+      .values({ id: owner, createdAt: new Date().toISOString() })
+
+    const older = `warm${crypto.randomUUID().slice(0, 8)}`
+    const newer = `warm${crypto.randomUUID().slice(0, 8)}`
+    const carded = `warm${crypto.randomUUID().slice(0, 8)}`
+    await seed(older, { carded: false })
+    await seed(newer, { carded: false })
+    await seed(carded, { carded: true })
+    for (const [index, word] of [older, newer, carded].entries()) {
+      await db.insert(words).values({
+        id: crypto.randomUUID(),
+        userId: owner,
+        headword: word,
+        normalized: word,
+        source: 'manual',
+        createdAt: new Date(2020, 0, 1 + index).toISOString(),
+      })
+    }
+
+    // Other suites leave saved words behind, so this asserts on order within
+    // the words it made rather than on the whole list.
+    const demanded = (await demandedWords(db)).filter((word) =>
+      [older, newer, carded].includes(word),
+    )
+    expect(demanded).toEqual([older, newer])
   })
 })

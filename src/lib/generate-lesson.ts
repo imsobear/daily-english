@@ -13,11 +13,11 @@ import {
 } from '#/lib/ai'
 import { AiError, readDeepSeekConfig } from '#/lib/deepseek'
 import {
+  ensureEntry,
   entrySenses,
-  fillEntry,
   loadEntries,
   loadEntry,
-  needsCard,
+  needsSenses,
 } from '#/lib/entries'
 import { chunkSentences, splitSentences } from '#/lib/text'
 
@@ -151,8 +151,7 @@ export async function loadLessonJob(env: LessonEnv, lessonId: string) {
     ? await db.query.words.findMany({ where: inArray(words.id, wordIds) })
     : []
   const normalizedById = new Map(saved.map((row) => [row.id, row.normalized]))
-  const entries = await healLegacySenses(
-    env,
+  const entries = await fillMissingSenses(
     db,
     saved.map((row) => row.normalized),
   )
@@ -192,33 +191,32 @@ export async function loadLessonJob(env: LessonEnv, lessonId: string) {
 }
 
 /**
- * Give the writer the best senses available for the words it must use.
+ * Make sure the writer has a sense for every word it must use.
  *
- * Raw dictionary entries are ordered historically, so the first sense of
- * "despite" is the archaic noun "disdain" and of "manage" is "the act of
- * managing". The writer followed them faithfully and produced "the manage of
- * the shop". This runs inside generation rather than at lesson creation so the
- * model calls hide behind the progress screen, and it writes to the shared
- * entry, so a word is repaired once for every learner who has it.
+ * A word with none is usually one saved minutes ago, before the dictionary
+ * fetch that follows a save had finished. The nightly pass is what replaces
+ * dictionary senses with the model's, which are in modern frequency order and
+ * stop the writer producing "the manage of the shop"; a lesson does not wait
+ * for that, since ten cards is five minutes and the progress screen is not
+ * the place to spend a day's allowance.
  */
-async function healLegacySenses(
-  env: LessonEnv,
+async function fillMissingSenses(
   db: ReturnType<typeof dbOf>,
   normalized: string[],
 ) {
   const entries = await loadEntries(db, normalized)
-  const stale = normalized.filter((word) => needsCard(entries.get(word)))
-  if (stale.length === 0) return entries
+  const blank = normalized.filter((word) => needsSenses(entries.get(word)))
+  if (blank.length === 0) return entries
 
   await Promise.all(
-    stale.map(async (word) => {
+    blank.map(async (word) => {
       try {
-        await fillEntry(env, db, word)
-        const healed = await loadEntry(db, word)
-        if (healed) entries.set(word, healed)
+        await ensureEntry(db, word)
+        const filled = await loadEntry(db, word)
+        if (filled) entries.set(word, filled)
       } catch (error) {
-        // A stale gloss still beats failing the whole lesson.
-        console.error('Could not refresh senses for', word, error)
+        // A word with no gloss still beats failing the whole lesson.
+        console.error('Could not look up', word, error)
       }
     }),
   )

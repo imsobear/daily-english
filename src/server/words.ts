@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, desc, eq } from 'drizzle-orm'
 
-import { getDb, getEnv, waitUntil } from '#/db'
+import { getDb, waitUntil } from '#/db'
 import { wordOffers, words } from '#/db/schema'
 import { normalizeHeadword } from '#/lib/dictionary'
 import {
@@ -9,11 +9,10 @@ import {
   entryCollocations,
   entryFamily,
   entrySenses,
-  fillEntry,
   isDefined,
   loadEntries,
   loadEntry,
-  needsCard,
+  needsSenses,
   stubEntry,
   type EntriesDb,
   type Entry,
@@ -186,14 +185,14 @@ export const getWord = createServerFn({ method: 'GET' })
   })
 
 /**
- * Fill in a word nobody has looked up yet, after the response has gone.
+ * Look a word up after the response has gone.
  *
- * Failure is survivable: the entry stays as it is, the learner sees the word
- * without its senses, and both the pre-warm pass and the next visit to the
- * word try again.
+ * Failure is survivable: the entry stays reserved, the learner sees the word
+ * without its senses, and both the nightly pass and the next visit to the word
+ * try again.
  */
 async function enrichWord(normalized: string) {
-  await fillEntry(getEnv(), getDb(), normalized)
+  await ensureEntry(getDb(), normalized)
 }
 
 export async function saveWordForUser(
@@ -235,11 +234,12 @@ export async function saveWordForUser(
   const entry = await stubEntry(db, normalized, data.headword)
   await db.insert(words).values(row)
 
-  if (needsCard(entry)) {
+  if (needsSenses(entry)) {
     /*
-     * A dictionary fetch and then half a minute of Workers AI. Running it
-     * after the response keeps adding a word instant, which matters when
-     * filling a ten word lesson one tap at a time.
+     * A dictionary fetch is seconds, not milliseconds. Running it after the
+     * response keeps adding a word instant, which matters when filling a ten
+     * word lesson one tap at a time. The card the model writes comes with the
+     * nightly pass, which takes saved words before pool words.
      */
     waitUntil(
       enrichWord(normalized).catch((error: unknown) => {
@@ -302,7 +302,7 @@ export async function saveWordsForUser(
 
   // Starter sets are the same handful of catalog words for everyone, so after
   // the first learner passes through this is usually nothing to do.
-  const undefinedYet = entries.filter(needsCard)
+  const undefinedYet = entries.filter(needsSenses)
   if (undefinedYet.length > 0) {
     waitUntil(
       Promise.allSettled(
@@ -348,15 +348,6 @@ export const refreshWord = createServerFn({ method: 'POST' })
     const entry = await ensureEntry(db, row.normalized, row.headword)
     if (!isDefined(entry) || entrySenses(entry).length === 0) {
       throw new Error('Still no definition for this word')
-    }
-    // The senses above are the dictionary's if the model has not been round
-    // yet; ask it again for this word rather than waiting on the next pass.
-    if (needsCard(entry)) {
-      waitUntil(
-        enrichWord(row.normalized).catch((error: unknown) => {
-          console.error('Could not describe', row.normalized, error)
-        }),
-      )
     }
     return toCard(row, entry)
   })
