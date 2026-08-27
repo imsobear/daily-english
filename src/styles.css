@@ -193,21 +193,30 @@
    * address bar and toolbar away when the document itself is what moved, so
    * the feed cannot keep its own scrolling box: the snapping belongs to the
    * page. `--feed-head` is the sticky header the cards slide under, measured
-   * on mount; `--feed-slide` is what is left of a screen once the header and
-   * the tab bar have taken theirs.
+   * on mount; the other two are a screen with the header and the tab bar
+   * taken off it, and they differ on purpose.
    *
-   * Small viewport units, deliberately. A card sized to the screen as it is
-   * now would be resized the moment the bars fold, and WebKit does not
-   * re-snap a track that changed size underneath it — the feed would land
-   * between two cards. Sized to the screen at its smallest, nothing moves;
-   * folding the bars just opens a strip of quiet under the card.
+   * `--feed-slide` is the step from one card to the next, cut from `lvh` —
+   * the screen at its tallest, with the bars gone. It has to be a fixed
+   * number, because WebKit does not re-snap a track that resized underneath
+   * it and the feed would come to rest between two cards; and it has to be
+   * the tallest number, or folding the bars uncovers the card below.
+   *
+   * `--feed-card` is what one card is drawn in, cut from `dvh` — the screen
+   * as it is this second. It is the part that may move: the word stays in
+   * the middle of what can actually be seen as the bars come and go. With
+   * the bars out the two differ, and the difference is blank space under the
+   * card, below the fold, which is the whole point of it.
    */
   html[data-feed] {
     /* What the header comes to today, until the measurement lands as an
        inline style over the top of this. */
     --feed-head: 3.5rem;
     --feed-slide: calc(
-      100svh - var(--feed-head) - 3.5rem - env(safe-area-inset-bottom)
+      100lvh - var(--feed-head) - 3.5rem - env(safe-area-inset-bottom)
+    );
+    --feed-card: calc(
+      100dvh - var(--feed-head) - 3.5rem - env(safe-area-inset-bottom)
     );
     scroll-snap-type: y mandatory;
     scroll-padding-top: var(--feed-head);

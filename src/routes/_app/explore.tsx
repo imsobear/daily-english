@@ -334,43 +334,46 @@ function ExploreScreen() {
       ) : (
         <div ref={feed} onTouchStart={arm} onMouseDown={arm}>
           {cards.map((card, index) => (
-            <WordSlide
+            /*
+              The step from one card to the next, which is a little more than a
+              screen while the browser's bars are out — that is what keeps the
+              next card from showing under this one when they fold away.
+            */
+            <div
               // Wrapping the learner's list can show a word twice in one feed,
               // so position is part of what makes a card itself.
               key={`${card.normalized}-${index}`}
-              card={card}
-              mark={marks[card.normalized]}
-              first={index === 0}
-              onSpeak={() => speak(card)}
-              onSave={() => void save(card)}
-              onDismiss={() => void dismiss(card)}
-            />
+              className="h-[var(--feed-slide)] snap-start snap-always"
+            >
+              <WordSlide
+                card={card}
+                mark={marks[card.normalized]}
+                first={index === 0}
+                onSpeak={() => speak(card)}
+                onSave={() => void save(card)}
+                onDismiss={() => void dismiss(card)}
+              />
+            </div>
           ))}
 
-          <div className="flex h-[var(--feed-slide)] snap-start snap-always flex-col items-center justify-center gap-3 px-8 text-center">
-            {end ? (
-              <>
-                <p className="text-lg font-extrabold">That is the lot</p>
-                <p className="text-sm text-ink-soft">
-                  You have been through everything at your level. Raising it in
-                  settings opens a new pool.
-                </p>
-                <ButtonLink to="/settings" tone="neutral" className="mt-1">
-                  Open settings
-                </ButtonLink>
-              </>
-            ) : (
-              <Spinner className="size-6 text-ink-faint" />
-            )}
+          <div className="h-[var(--feed-slide)] snap-start snap-always">
+            <div className="flex h-[var(--feed-card)] flex-col items-center justify-center gap-3 px-8 text-center">
+              {end ? (
+                <>
+                  <p className="text-lg font-extrabold">That is the lot</p>
+                  <p className="text-sm text-ink-soft">
+                    You have been through everything at your level. Raising it
+                    in settings opens a new pool.
+                  </p>
+                  <ButtonLink to="/settings" tone="neutral" className="mt-1">
+                    Open settings
+                  </ButtonLink>
+                </>
+              ) : (
+                <Spinner className="size-6 text-ink-faint" />
+              )}
+            </div>
           </div>
-
-          {/*
-            Room to fold the bars into. Cards are cut for the screen at its
-            smallest, so once the browser's bars go the screen is taller than
-            the page was built for and the scroll runs out before the last
-            card can reach the top. This is the difference, and nothing else.
-          */}
-          <div aria-hidden className="h-[calc(100lvh-100svh)]" />
         </div>
       )}
     </div>
@@ -408,7 +411,12 @@ function WordSlide({
   const senses = card.senses.slice(0, 3)
 
   return (
-    <article className="flex h-[var(--feed-slide)] snap-start snap-always flex-col overflow-hidden px-4 pt-1 pb-3">
+    /*
+      The screen this card is drawn in, which is not the same as the step from
+      one card to the next — see `html[data-feed]` in the stylesheet. The feed
+      owns the step; a card owns only what it can be seen in.
+    */
+    <article className="flex h-[var(--feed-card)] flex-col overflow-hidden px-4 pt-1 pb-3">
       <div className="mx-auto flex min-h-0 w-full max-w-sm flex-1 flex-col overflow-hidden">
         {/*
           A word takes up a third of a screen and the buttons a little at the
