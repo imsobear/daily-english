@@ -47,7 +47,10 @@ Let the document scroll. A screen that pins itself to the viewport and scrolls
 a box inside it never lets a browser fold its address bar and toolbar away, so
 in a tab it pays two strips of screen for the whole visit. The Explore feed is
 the worked example: `html[data-feed]` in `src/styles.css` holds the snapping
-and the card height, sized in `svh` because WebKit does not re-snap a track
-that changed size under it. Note also that `overflow-x: hidden` on `body` would
+and two heights. The step between cards is `lvh`, a fixed number because WebKit
+does not re-snap a track that changed size under it, and the tallest one so that
+folding the bars away uncovers blank page rather than the next card; what a card
+is drawn in is `dvh`, so it stays centred in whatever can be seen at the time.
+Note also that `overflow-x: hidden` on `body` would
 quietly undo all of this — one axis hidden makes the other a scroll container —
 which is why it is `clip`.
