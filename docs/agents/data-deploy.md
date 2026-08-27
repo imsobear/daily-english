@@ -56,11 +56,13 @@ which makes the run resumable and a repeat run nearly free. The whole pool is
 around 230 steps and several hours, and a dollar or two of OpenAI for the audio.
 
 The cards are rationed separately: a run writes a hundred of them and stops,
-which is most of the free Workers AI allowance for a day and none of a bill. So
-the pass wants running once a day for a while rather than once — each run picks
-up where the last stopped. `'{"describe":500}'` spends past the allowance on
-purpose, at roughly a dollar per thousand cards. Everything here is shared by
-every learner, so it is paid once. Run it after `pnpm vocab` adds words.
+which is about three quarters of the free Workers AI allowance for a day and
+none of a bill. A cron runs the pass nightly at 00:10 UTC with `speak: false`,
+so the pool cards itself a hundred words at a time and nobody has to remember;
+each run picks up where the last stopped. `'{"describe":500}'` spends past the
+allowance on purpose, at roughly a dollar per thousand cards. Everything here is
+shared by every learner, so it is paid once. Run it by hand after `pnpm vocab`
+adds words, if you would rather not wait a night.
 
 The cards come from `@cf/openai/gpt-oss-120b` over the REST API rather than
 through an `ai` binding. The binding has no local implementation, so declaring

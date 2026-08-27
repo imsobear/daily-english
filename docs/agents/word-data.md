@@ -119,14 +119,19 @@ pnpm exec wrangler workflows trigger vocabulary-prewarm
 Three phases per batch of twenty — define, speak, describe — each skipping words
 that already have that piece, which makes a repeat run nearly free.
 
+A cron fires the same pass nightly at 00:10 UTC — ten minutes after the Workers
+AI allowance resets — from the `scheduled` handler in `src/worker.ts`. It asks
+for senses and cards but not audio, which is OpenAI money rather than a free
+allowance and is already synthesised on first play.
+
 The describe phase is rationed. Workers AI gives away 10,000 Neurons a day and a
-card costs roughly ninety of them, so a run writes `DESCRIBE_BUDGET` — a hundred
-— cards and stops, leaving the rest for tomorrow. Run it again the next day and
-it picks up exactly where it left off, because a carded word is skipped and the
-budget only moves when a card is actually written. Pass `{"describe": 500}` to
-the trigger to spend past the free allowance deliberately; a thousand cards is
-about a dollar. See [data and deploys](data-deploy.md) for the rest of the cost
-picture.
+card costs roughly seventy of them, so a run writes `DESCRIBE_BUDGET` — a
+hundred — cards and stops, leaving the rest of the day for the words learners
+meet themselves. The next night picks up exactly where it left off, because a
+carded word is skipped and the budget only moves when a card is actually
+written. Pass `{"describe": 500}` to a manual trigger to spend past the free
+allowance deliberately; a thousand cards is about a dollar. See
+[data and deploys](data-deploy.md) for the rest of the cost picture.
 
 ## What stops it all happening twice
 
@@ -140,11 +145,15 @@ always six reads.
 
 These are known and unfixed, listed so nobody rediscovers them the hard way.
 
-**Nothing triggers the pass.** There is no cron trigger, and although
-`PREWARM_WORKFLOW` is bound in `wrangler.jsonc`, no code in `src/` creates an
-instance. Words added by `pnpm vocab` stay blank until a human runs the command
-— and now that a run stops at a hundred cards, the pool wants a run a day for a
-while rather than one long afternoon.
+**The pass cannot see what browsing has already spent.** The nightly hundred is
+a guess at three quarters of the allowance, not a measurement of what is left
+of it. A heavy day on the Explore feed and a full nightly run can together pass
+10,000 Neurons, and the overage is billed rather than refused — at a tenth of a
+cent per card, which is why nothing reads the meter.
+
+**The pool is never spoken by itself.** The cron passes `speak: false`, so a
+pool word has no audio until somebody plays it or a human triggers the pass by
+hand. That is a dollar of TTS deferred, not saved.
 
 **A card is written once and never revisited.** Improving the prompt does
 nothing for words already described, and a card whose Chinese was rejected by

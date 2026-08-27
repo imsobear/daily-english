@@ -72,14 +72,17 @@ export function addTally(a: PrewarmTally, b: PrewarmTally): PrewarmTally {
 export const PREWARM_BATCH = 20
 
 /**
- * Cards per run, sized to the free Workers AI allowance.
+ * Cards per run, sized to a night's share of the free Workers AI allowance.
  *
- * Workers AI gives away 10,000 Neurons a day, and one card off gpt-oss-120b
- * costs somewhere near ninety of them once the model has finished thinking —
- * a hundred words is most of a day and none of a bill. The pool is thousands
- * of words, so the pass is meant to be run again tomorrow rather than turned
- * up: it skips whatever is already carded, and the words a learner actually
- * meets get theirs from `waitUntil` long before the pass arrives.
+ * Workers AI gives away 10,000 Neurons a day and one card off gpt-oss-120b
+ * costs somewhere near seventy of them, counting the answers thrown away for
+ * having no Chinese in them. A hundred is roughly three quarters of a day,
+ * which leaves the rest for the words a learner meets themselves — those are
+ * carded on demand and are worth more than any word the pass has not reached.
+ *
+ * The cron in `src/worker.ts` spends this every night, and the pass skips
+ * whatever is already carded, so the pool fills a hundred words at a time
+ * without anyone deciding to do it.
  */
 export const DESCRIBE_BUDGET = 100
 
