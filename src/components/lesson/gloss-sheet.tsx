@@ -2,24 +2,26 @@ import { Check, Plus, Volume2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button, Spinner } from '#/components/ui'
+import { hasChinese } from '#/lib/word-card'
 import { glossWord, type Gloss } from '#/server/gloss'
 import { addWord } from '#/server/words'
 
 /**
  * Bottom sheet shown when a learner taps a word inside the article.
  *
+ * The same card as the Explore feed — headword, pronunciation, a box per sense
+ * with its Chinese a tap away — so a word looks the same wherever it is met.
+ * What the article adds is the sentence it was tapped in, spoken aloud.
+ *
  * The lookup happens on demand rather than up front — glossing every word of
  * every article would be a large cost for something most words never need.
  */
 export function GlossSheet({
   headword,
-  sentence,
   onPlaySentence,
   onClose,
 }: {
   headword: string | null
-  /** The article sentence the word was tapped in, if it came from one. */
-  sentence?: string | null
   onPlaySentence?: () => void
   onClose: () => void
 }) {
@@ -27,8 +29,10 @@ export function GlossSheet({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [showGloss, setShowGloss] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const wordAudio = useRef<HTMLAudioElement | null>(null)
+  const chinese = hasChinese(gloss?.senses ?? [])
 
   useEffect(() => {
     if (!headword) return
@@ -36,6 +40,7 @@ export function GlossSheet({
     setLoading(true)
     setGloss(null)
     setSaved(false)
+    setShowGloss(false)
     setError(null)
 
     void glossWord({ data: { headword } })
@@ -100,8 +105,8 @@ export function GlossSheet({
         onClick={onClose}
         className="absolute inset-0 bg-ink/35 backdrop-blur-[2px]"
       />
-      <div className="animate-pop-in relative mx-auto w-full max-w-[26rem] rounded-t-3xl border-t border-hairline bg-surface p-5 pb-8 shadow-pop">
-        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-hairline-strong" />
+      <div className="animate-pop-in relative mx-auto max-h-[85svh] w-full max-w-[26rem] overflow-y-auto rounded-t-3xl border-t border-hairline bg-surface p-4 pb-7 shadow-pop">
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-hairline-strong" />
         <button
           type="button"
           onClick={onClose}
@@ -111,72 +116,101 @@ export function GlossSheet({
           <X className="size-4" />
         </button>
 
-        <div className="flex items-center gap-2 pr-9">
-          {/* The looked-up form, which is the dictionary's rather than the
-              article's: tapping "revealed" asks about "reveal". */}
-          <h2 className="selectable min-w-0 flex-1 text-2xl font-black tracking-tight">
+        {/* The looked-up form, which is the dictionary's rather than the
+            article's: tapping "revealed" asks about "reveal". */}
+        <button
+          type="button"
+          onClick={speak}
+          disabled={!gloss}
+          aria-label={`Hear ${gloss?.headword ?? headword}`}
+          className="flex w-full items-center gap-2 pr-9 text-left disabled:opacity-60"
+        >
+          <span className="selectable min-w-0 text-[1.75rem] font-black leading-none tracking-tight">
             {gloss?.headword ?? headword}
-          </h2>
-          <button
-            type="button"
-            onClick={speak}
-            disabled={!gloss}
-            aria-label={`Hear ${gloss?.headword ?? headword}`}
-            className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-sunk text-ink-soft active:bg-hairline disabled:opacity-40"
-          >
-            <Volume2 className="size-5" />
-          </button>
-        </div>
+          </span>
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-sunk text-ink-soft">
+            <Volume2 className="size-4" />
+          </span>
+        </button>
+
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-soft">
+          {gloss?.ipa ? <span className="selectable">{gloss.ipa}</span> : null}
+          {/* Off until asked for, as on a feed card: the English below is the
+              exercise, and a translation in plain sight is read instead. */}
+          {chinese ? (
+            <button
+              type="button"
+              onClick={() => setShowGloss((shown) => !shown)}
+              aria-pressed={showGloss}
+              className={`rounded-full border px-2 py-px text-[0.6875rem] font-bold ${
+                showGloss
+                  ? 'border-transparent bg-surface-sunk text-ink-soft'
+                  : 'border-hairline text-ink-faint'
+              }`}
+            >
+              中文
+            </button>
+          ) : null}
+          {/* The sentence is behind the sheet and already read, so this is the
+              speaker and nothing else — the article says the rest. */}
+          {onPlaySentence ? (
+            <button
+              type="button"
+              onClick={onPlaySentence}
+              className="flex items-center gap-1 rounded-full border border-hairline px-2 py-px text-[0.6875rem] font-bold text-ink-faint"
+            >
+              <Volume2 className="size-3" /> Sentence
+            </button>
+          ) : null}
+        </p>
 
         {loading ? (
-          <p className="mt-3 flex items-center gap-2 text-sm text-ink-soft">
+          <p className="mt-3.5 flex items-center gap-2 text-sm text-ink-soft">
             <Spinner /> Looking it up…
           </p>
         ) : error ? (
-          <p className="mt-3 text-sm font-bold text-destructive">{error}</p>
+          <p className="mt-3.5 text-sm font-bold text-destructive">{error}</p>
         ) : gloss ? (
           <>
-            {gloss.ipa ? (
-              <p className="selectable mt-1 text-sm text-ink-soft">
-                {gloss.ipa}
+            {gloss.senses.length === 0 ? (
+              <p className="mt-3.5 text-sm leading-snug text-ink-soft">
+                No definition for this one yet.
               </p>
-            ) : null}
-            {gloss.partOfSpeech ? (
-              <span className="mt-2 inline-block rounded-full bg-surface-sunk px-2.5 py-0.5 text-[0.6875rem] font-black uppercase tracking-wider text-ink-soft">
-                {gloss.partOfSpeech}
-              </span>
-            ) : null}
-            <p className="selectable mt-3 text-[1.0625rem] leading-relaxed">
-              {gloss.definition ?? 'No definition found for this word.'}
-            </p>
-            {gloss.example ? (
-              <p className="selectable mt-2 border-l-2 border-brand-300 pl-3 text-sm italic text-ink-soft">
-                {gloss.example}
-              </p>
-            ) : null}
-
-            {sentence && onPlaySentence ? (
-              <button
-                type="button"
-                onClick={onPlaySentence}
-                className="mt-3 flex w-full items-center gap-3 rounded-2xl bg-surface-sunk px-3.5 py-2.5 text-left active:bg-hairline"
-              >
-                <Volume2 className="size-5 shrink-0 text-brand-500" />
-                <span className="min-w-0 flex-1">
-                  <span className="kicker block">In the article</span>
-                  <span className="mt-0.5 line-clamp-2 block text-sm leading-snug text-ink-soft">
-                    {sentence}
-                  </span>
-                </span>
-              </button>
-            ) : null}
+            ) : (
+              <ul className="mt-3.5 space-y-2">
+                {gloss.senses.map((sense, index) => (
+                  <li
+                    key={`${sense.pos}-${index}`}
+                    className="card-soft px-3.5 py-2.5"
+                  >
+                    <p className="text-[0.9375rem] leading-snug">
+                      {sense.pos ? (
+                        <span className="kicker mr-1.5 inline">
+                          {sense.pos}{' '}
+                        </span>
+                      ) : null}
+                      <span className="selectable">{sense.definition}</span>
+                    </p>
+                    {showGloss && sense.zh ? (
+                      <p className="selectable mt-1 text-[0.9375rem] leading-snug text-ink-soft">
+                        {sense.zh}
+                      </p>
+                    ) : null}
+                    {sense.examples[0] ? (
+                      <p className="selectable mt-1 text-sm italic leading-snug text-ink-soft">
+                        {sense.examples[0]}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
 
             <Button
               block
-              size="lg"
               tone={saved ? 'neutral' : 'brand'}
-              className="mt-5"
-              disabled={saved || saving || !gloss.definition}
+              className="mt-4"
+              disabled={saved || saving || gloss.senses.length === 0}
               onClick={onSave}
             >
               {saved ? (

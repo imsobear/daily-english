@@ -14,13 +14,19 @@ import {
 import { TTS_VOICE } from '#/lib/ai'
 import { requireUser } from '#/lib/session'
 import { baseFormCandidates } from '#/lib/text'
+import type { Sense } from '#/lib/word-card'
+
+/**
+ * The three senses a reader can take in without leaving the article, which is
+ * also what the Explore card shows — one word looks the same wherever it is
+ * met. Everything else a word has lives on its own page.
+ */
+const GLOSS_SENSES = 3
 
 export type Gloss = {
   headword: string
   ipa: string | null
-  definition: string | null
-  partOfSpeech: string | null
-  example: string | null
+  senses: Sense[]
   saved: boolean
   /** Synthesised on first play and keyed by the word, so it is spoken once. */
   audioUrl: string
@@ -91,13 +97,10 @@ export const glossWord = createServerFn({ method: 'POST' })
       }),
     ])
 
-    const senses = entrySenses(entry)
     return {
       headword: entry?.headword ?? headword,
       ipa: entry?.ipa ?? null,
-      definition: senses[0]?.definition ?? null,
-      partOfSpeech: senses[0]?.pos || null,
-      example: senses[0]?.examples[0] ?? null,
+      senses: entrySenses(entry).slice(0, GLOSS_SENSES),
       saved: Boolean(owned),
       audioUrl: `/api/word-audio/${encodeURIComponent(headword)}?v=${TTS_VOICE}`,
     }

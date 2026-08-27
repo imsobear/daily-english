@@ -41,12 +41,13 @@ both exist: a learner who typed "Risk" still sees the canonical form.
 **`ipa`** — `/ɹɪsk/` — is the pronunciation printed under the headword. It is
 display only; the speaker button does not use it.
 
-**`senses`** is the word. Both the feed card and the word page render it one box
-per sense, `zh` is what the 中文 button reveals under each definition, and
-`examples` is a list so a sense can grow a second sentence without a migration.
-It is also what everything else reads a single line out of: the article glossary
-and the quiz take the first sense and its first example, and an empty list is
-what puts "Looking this one up…" on a feed card.
+**`senses`** is the word. The feed card, the word page and the sheet that opens
+on a tapped word all render it the same way — one box per sense, up to three,
+`zh` behind the 中文 button, the first example in italics underneath — so a word
+looks the same wherever it is met. `examples` is a list so a sense can grow a
+second sentence without a migration. The quiz reads a single line out of it, the
+first sense and its first example, and an empty list is what puts "Looking this
+one up…" on a feed card.
 
 **`collocations`** is the "Goes with" row of chips on the word page and
 **`family`** is "Same family" below it. Neither appears on the feed card — a
