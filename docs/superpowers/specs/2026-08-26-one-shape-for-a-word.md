@@ -39,91 +39,18 @@ A second prompt tuned for a weaker model is the complexity this change exists to
 remove, so there is one model and the ten to twenty seconds it costs are spent
 in the background.
 
-## The row
+## The row, the flow, the pass
 
-```json
-{
-  "normalized": "risk",
-  "headword": "risk",
-  "ipa": "/ɹɪsk/",
-  "audio_key": "word-audio/marin/risk.mp3",
-  "senses": [
-    {
-      "pos": "noun",
-      "definition": "the chance that something bad will happen",
-      "zh": "风险，可能发生的坏事",
-      "examples": ["There is a high risk of flooding after the heavy rain."]
-    }
-  ],
-  "collocations": ["risk of", "risk factor", "high risk"],
-  "family": [{ "word": "risky", "pos": "adjective" }],
-  "source": "model",
-  "updated_at": "..."
-}
-```
+Nine columns, each with one job, and one accessor per column: no surface forks
+on shape again. What the row holds and how it is filled is
+[how a word is built](../../agents/word-data.md), kept current there rather than
+described twice.
 
-Nine columns, each with one job. `entrySenses`, `entryExamples` and
-`entryDetail` collapse into one accessor, and no surface forks on shape again.
-
-## One flow, three doors
-
-Saving a word, tapping an unknown word in an article and scrolling the Explore
-feed are the same question — *what do we know about this word?* — so they run
-the same function, `ensureEntry`, in the same three steps:
-
-1. **Read the store.** A word anyone has met before is already there, and this
-   is where it usually ends: one query, nothing else runs.
-2. **Miss: fetch and insert.** The free dictionary answers in about 300ms with
-   IPA and senses good enough to read, and that row is written before the caller
-   is answered. The wait is bounded — two seconds rather than the six it is
-   given today — because a save that hangs on a third party is worse than a save
-   that shows its senses a moment later. On a timeout the row stays `pending`
-   and step 3 finishes the job.
-3. **Then complete it in the background.** The same call queues Workers AI for
-   the real senses with their Chinese, collocations and family, in `waitUntil`.
-   Half a minute later the row is upgraded in place.
-
-Each step is skipped when the row already carries what it would write, which is
-what `source` records: `model` is complete and nothing re-runs, `dictionary` is
-readable and waiting to be upgraded, `pending` is a reserved row with nothing in
-it yet.
-
-Audio is not queued here, though the first draft of this said it would be. It is
-the one thing in a word that costs real money per word rather than a share of a
-free allowance, and it is already covered twice over: the word-audio endpoint
-speaks a word the first time anyone plays it, and the pass speaks the pool. A
-word nobody ever plays should not be paid for.
-
-The doors differ in two ways only, both of them the caller's business rather
-than the function's. Saving and a gloss tap ask about one word and wait for step
-2, because there is a person looking at the answer. A feed page asks about up to
-six and waits for none of them: twelve cards should not be held behind six
-lookups, and the words are pool words that usually have everything already.
-
-## The offline pass
-
-The same steps in bulk over the pool, and after this change the pass and the
-request paths call the same functions rather than reimplementing each other.
-Its job is to get ahead of the feed, so that scrolling is reading rather than
-waiting.
-
-Dictionary lookups and audio can run through the whole pool in one go: both are
-cheap, both are already skipped for any word that has them, and audio in
-particular is never regenerated — the key contains the voice, so a word is
-spoken once per voice and never again.
-
-Workers AI is the part with a budget. A card is around ninety neurons and the
-free allocation is 10,000 a day, so the describe phase takes a word limit per
-run and stops when it hits it, resuming where it left off next time. The default
-is a hundred, which is a day of the allowance; the 4,600-word pool then takes
-about six weeks of daily runs — free but slow. Paying for it is a one-off of
-about $4 and a few hours, so the limit is a parameter rather than a policy:
-
-```bash
-pnpm exec wrangler workflows trigger vocabulary-prewarm                    # 100, the free day
-pnpm exec wrangler workflows trigger vocabulary-prewarm '{"describe":500}'
-pnpm exec wrangler workflows trigger vocabulary-prewarm '{"describe":0}'   # dictionary and audio only
-```
+Audio is not queued alongside a card, though the first draft of this said it
+would be. It is the one thing in a word that costs real money per word rather
+than a share of a free allowance, and it is already covered twice over: the
+word-audio endpoint speaks a word the first time anyone plays it, and the pass
+speaks the pool. A word nobody ever plays should not be paid for.
 
 ## Migration
 
@@ -152,30 +79,28 @@ Everything below is built except the last line.
 - `src/lib/word-card.ts` (was `word-detail.ts`) — drop `usage`; the only writer of senses
 - `src/lib/dictionary.ts` — `lookupDictionary` returns IPA and stopgap senses; `buildEntry` goes
 - `src/lib/ai.ts` — `defineWord` deleted
-- `src/lib/entries.ts` — one accessor each, `saveDictionary`, `completeEntry`, `fillEntry`
-- `src/lib/prewarm.ts`, `src/workflows/prewarm.ts` — the shared functions, plus `DESCRIBE_BUDGET`
-- `src/server/words.ts`, `gloss.ts`, `browse.ts` — `ensureEntry` in the request, `fillEntry` in `waitUntil`
+- `src/lib/entries.ts` — one accessor each, `saveDictionary`, `ensureEntry`
+- `src/lib/prewarm.ts`, `src/workflows/prewarm.ts` — the shared functions, `describeEntry`, `DESCRIBE_BUDGET`
+- `src/server/words.ts`, `gloss.ts`, `browse.ts` — `ensureEntry`, and nothing else
 - `src/server/lessons.ts`, `src/lib/generate-lesson.ts` — read the one accessor
 - `src/routes/_app/explore.tsx`, `words/$wordId.tsx` — the fallback fork is gone
 - `scripts/mock-ai.mjs`, the test suites, `docs/agents/word-data.md`, `data-deploy.md`
 - **Still to come:** `0015_drop_word_legacy.sql`, once this is deployed
 
-## What this closes
+## What changed a day later
 
-Three of the rough edges in [how a word is built](../../agents/word-data.md): a
-word outside the pool can now get a card, a card can be rewritten because the
-request paths write one too, and "Looking this one up…" nearly disappears
-because the dictionary answers in milliseconds.
+This spec had the request paths queue a card in `waitUntil`, and left a cron
+"out of scope" on the grounds that the command is one line. Both were wrong way
+round: a card in `waitUntil` meant an idle scroll could spend the day's
+allowance while the learner who saved a word got nothing sooner for it, since
+the card lands after they have moved on either way.
 
-Enrichment also becomes demand-led rather than pool-led. Whatever a learner
-saves, taps or scrolls past is described within seconds of being seen, and the
-offline pass is left doing what a pass is good at: getting ahead of the words
-nobody has reached yet, at whatever rate the budget allows.
+So the model left the request path entirely. The pass writes every card, a cron
+starts it at 00:10 UTC, and it takes saved words before pool words — without
+that a word typed in by hand would have no path to a card at all, which is the
+rough edge this spec set out to close. What a request does now is read the row
+and, at most, fetch the dictionary.
 
-## Out of scope
-
-A cron trigger for the daily run — the limit makes daily runs sensible, but
-scheduling them is a separate change and the command is one line. Refetching a
-card in the client when the background describe lands, which matters less now
-that the dictionary fills the gap. A second example per sense: the shape allows
-it, the prompt does not ask for one yet.
+Still open: refetching a card in the client when one lands, which matters less
+now that the dictionary fills the gap, and a second example per sense — the
+shape allows it, the prompt does not ask for one yet.

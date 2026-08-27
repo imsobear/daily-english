@@ -74,14 +74,13 @@ export const PREWARM_BATCH = 20
  * Cards per run, sized to a night's share of the free Workers AI allowance.
  *
  * Workers AI gives away 10,000 Neurons a day and one card off gpt-oss-120b
- * costs somewhere near seventy of them, counting the answers thrown away for
- * having no Chinese in them. A hundred is roughly three quarters of a day,
- * which leaves the rest for the words a learner meets themselves — those are
- * carded on demand and are worth more than any word the pass has not reached.
+ * costs somewhere near seventy-five of them, counting the answers thrown away
+ * for having no Chinese in them. That is about 130 cards; a hundred leaves room
+ * for the retries and for anything else on the account.
  *
  * The cron in `src/worker.ts` spends this every night, and the pass skips
- * whatever is already carded, so the pool fills a hundred words at a time
- * without anyone deciding to do it.
+ * whatever is already carded, so words fill a hundred at a time without anyone
+ * deciding to do it.
  */
 export const DESCRIBE_BUDGET = 100
 

@@ -38,10 +38,12 @@ learner retired with "Know it", which never comes back.
 
 ## Warming words
 
-Every card in the app is written by this pass — nothing on the request path
-asks the model, because a card is half a minute of a large model and a share of
-a daily allowance. It goes at the words learners have saved first, then the
-pool, whose file carries only headwords:
+The `vocabulary-prewarm` workflow defines, speaks and describes words before
+anyone asks for them. A cron starts it nightly at 00:10 UTC — ten minutes after
+the Workers AI allowance resets — from the `scheduled` handler in
+`src/worker.ts`, with `speak: false`. It is also the only thing that writes a
+card, so run it by hand after `pnpm vocab` adds words, or when a word saved
+today should not wait for tonight:
 
 ```bash
 pnpm exec wrangler workflows trigger vocabulary-prewarm                  # everything
@@ -53,33 +55,28 @@ pnpm exec wrangler workflows trigger vocabulary-prewarm '{"describe":0}'
 Twenty words per step, skipping anything already defined, spoken and described,
 which makes the run resumable and a repeat run nearly free. The whole pool is
 around 230 steps and several hours, and a dollar or two of OpenAI for the audio.
+Everything it writes is shared by every learner, so it is paid once.
+[How a word is built](word-data.md) covers what each phase writes and in what
+order the words are taken.
 
-The cards are rationed separately: a run writes a hundred of them and stops,
-which is about three quarters of the free Workers AI allowance for a day and
-none of a bill. A cron runs the pass nightly at 00:10 UTC with `speak: false`,
-so words card themselves a hundred at a time and nobody has to remember; each
-run picks up where the last stopped. `'{"describe":500}'` spends past the
-allowance on purpose, at roughly a dollar per thousand cards. Everything here is
-shared by every learner, so it is paid once. Run it by hand after `pnpm vocab`
-adds words, or when a word saved today should not wait for tonight.
+Cards are rationed apart from the rest. Neurons are billed per token written, so
+one card off `@cf/openai/gpt-oss-120b` is roughly seventy-five of them, and the
+free 10,000 a day is worth about 130. A run therefore writes a hundred and
+stops, leaving room for a retry or two, and the next run picks up where it left
+off. `'{"describe":500}'` spends past the allowance on purpose, at roughly a
+dollar per thousand cards.
 
-The cards come from `@cf/openai/gpt-oss-120b` over the REST API rather than
-through an `ai` binding. The binding has no local implementation, so declaring
-it makes the test pool open an authenticated session to Cloudflare, and CI has
-no token to open it with. The account id is a var in `wrangler.jsonc`, so production needs one secret:
+The model is called over the REST API rather than through an `ai` binding. The
+binding has no local implementation, so declaring it makes the test pool open an
+authenticated session to Cloudflare, and CI has no token to open it with. The
+account id is a var in `wrangler.jsonc`, so production needs one secret:
 
 ```bash
 pnpm exec wrangler secret put WORKERS_AI_API_TOKEN   # Workers AI read
 ```
 
-[How a word is built](word-data.md) covers what each phase writes, and what the
-app fills in by itself for a word the pass has never seen.
-
-Without it the pass still defines and speaks; it just writes no cards.
-Locally, `WORKERS_AI_MOCK_URL` points at `pnpm mock:ai` and nothing is spent.
-Neurons are billed per token written, so a card is about 75 of them — the free
-allocation of 10,000 a day covers roughly 130 words if you would rather drip
-the pool through than pay for it.
+Without it the pass still defines and speaks; it just writes no cards. Locally,
+`WORKERS_AI_MOCK_URL` points at `pnpm mock:ai` and nothing is spent.
 
 ## Writing a migration
 
