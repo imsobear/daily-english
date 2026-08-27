@@ -21,7 +21,7 @@ which return empty rather than throwing on anything malformed:
     {
       "pos": "noun",
       "definition": "the chance that something bad will happen",
-      "zh": "可能发生的坏事的可能性",
+      "zh": "风险；危险",
       "examples": ["There is a high risk of flooding after the heavy rain."]
     }
   ],
@@ -44,10 +44,13 @@ display only; the speaker button does not use it.
 **`senses`** is the word. The feed card, the word page and the sheet that opens
 on a tapped word all render it the same way — one box per sense, up to three,
 `zh` behind the 中文 button, the first example in italics underneath — so a word
-looks the same wherever it is met. `examples` is a list so a sense can grow a
-second sentence without a migration. The quiz reads a single line out of it, the
-first sense and its first example, and an empty list is what puts "Looking this
-one up…" on a feed card.
+looks the same wherever it is met. `zh` is the word itself in Chinese — 风险；危险,
+what a paper dictionary prints opposite the entry — and not the English
+definition translated: somebody who reaches for the button is stuck, and wants
+the word rather than another sentence to work through. `examples` is a list so a
+sense can grow a second sentence without a migration. The quiz reads a single
+line out of it, the first sense and its first example, and an empty list is what
+puts "Looking this one up…" on a feed card.
 
 **`collocations`** is the "Goes with" row of chips on the word page and
 **`family`** is "Same family" below it. Neither appears on the feed card — a
@@ -74,8 +77,8 @@ and never the finished card. Workers AI (`@cf/openai/gpt-oss-120b`) writes the
 card — senses in modern frequency order, each with its Chinese and an example,
 plus collocations and family — and takes half a minute to do it.
 `src/lib/word-card.ts` throws out the parts of its answer that came back wrong:
-a definition written in Chinese, a gloss that translates the example rather than
-the definition, an inflection offered as a family member.
+a definition written in Chinese, a gloss that runs to a sentence instead of
+giving the word, an inflection offered as a family member.
 
 DeepSeek used to define words too, and no longer does: the card replaced it
 outright. DeepSeek now writes articles and nothing else.
@@ -137,10 +140,20 @@ allowance by accident.
 pool word has no audio until somebody plays it or a human triggers the pass by
 hand. That is a dollar of TTS deferred, not saved.
 
-**A card is written once and never revisited.** Improving the prompt does
-nothing for words already described, and a card whose Chinese was rejected by
-the parsing looks identical to a good one afterwards. `describeWordTwice`
-retries within a single call and that is the whole of the second chance.
+**A card is written once and never revisited.** `describeWordTwice` retries
+within a single call and that is the whole of the automatic second chance:
+improving the prompt does nothing for words already described, and a card whose
+Chinese was rejected by the parsing looks identical to a good one afterwards.
+Putting words back in the queue is a hand-written `UPDATE` — `source` is what
+the pass reads, so
+
+```sql
+UPDATE dictionary_entries SET source = 'dictionary' WHERE source = 'model';
+```
+
+makes every carded word eligible again while leaving the card it has on screen
+until a better one lands. The next runs then re-describe them at the nightly
+budget, saved words first, and pay for each one over again.
 
 **A pending card in the feed never resolves on its own.** The lookup that would
 fix it runs after the response, but the client neither polls nor invalidates, so

@@ -15,7 +15,10 @@ import type { CefrLevel } from '#/lib/settings'
 export type Sense = {
   pos: string
   definition: string
-  /** The same definition in Chinese, revealed only when asked for. */
+  /**
+   * The word itself in Chinese for this sense — 乐观的, not the definition
+   * translated. Revealed only when asked for.
+   */
   zh: string | null
   /** One today. Plural so a second needs no migration. */
   examples: string[]
@@ -66,7 +69,7 @@ Write the card for "${headword}".
 senses — up to ${MAX_SENSES}, most frequent first. Three fields each:
   "definition", in English: plain English a ${level} learner reads without a dictionary, never defining the word with itself or with a rarer word.
   "example", in English: one sentence that sounds like real modern writing or speech, in a different context from the other senses.
-  "zh", in Chinese: that same definition again, as a dictionary gloss — a phrase, no subject, no full stop. For "risk": "风险，可能发生的坏事". Not a translation of the example, and not word by word off the English.
+  "zh", in Chinese: what this sense of the word *is* — the one or two words a paper dictionary prints opposite it, separated by "；", no subject and no full stop. For "optimistic": "乐观的". For "risk" as a noun: "风险；危险". Never the English definition translated, and never the example translated: "对未来或情况持积极期待" describes the word instead of giving it, and is the commonest way to get this wrong.
 The "zh" fields are the only Chinese anywhere in your answer. Writing a definition or an example in Chinese ruins the card.
 
 collocations — the partner words this one really appears with, most frequent first, three to six of them. Real two- or three-word phrases, not single words.
@@ -173,7 +176,10 @@ export function parseWordCard(
       // cannot read is worse than the plain dictionary one it would replace.
       if (!definition || CHINESE.test(definition)) return []
       const example = text(sense?.example, 240)
-      const zh = text(sense?.zh, 80)
+      // Two dozen characters is several Chinese equivalents and nowhere near a
+      // sentence, which is the failure this length is here to catch: asked
+      // what the word is, a model will sometimes explain what it means.
+      const zh = text(sense?.zh, 24)
       return [
         {
           pos: text(sense?.pos, 24) ?? '',

@@ -151,7 +151,7 @@ createServer(async (req, res) => {
                 pos: 'noun',
                 definition: `A mock definition of ${word}.`,
                 example: `The ${word} was hard to miss.`,
-                zh: '模拟释义',
+                zh: '模拟词',
               },
             ],
             collocations: [`a real ${word}`, `${word} of something`],
