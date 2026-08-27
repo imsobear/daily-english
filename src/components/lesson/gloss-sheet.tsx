@@ -2,7 +2,6 @@ import { Check, Plus, Volume2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button, Spinner } from '#/components/ui'
-import { hasChinese } from '#/lib/word-card'
 import { glossWord, type Gloss } from '#/server/gloss'
 import { addWord } from '#/server/words'
 
@@ -10,7 +9,8 @@ import { addWord } from '#/server/words'
  * Bottom sheet shown when a learner taps a word inside the article.
  *
  * The same card as the Explore feed — headword, pronunciation, a box per sense
- * with its Chinese a tap away — so a word looks the same wherever it is met.
+ * with its Chinese beside the definition — so a word looks the same wherever
+ * it is met.
  * What the article adds is the sentence it was tapped in, spoken aloud.
  *
  * The lookup happens on demand rather than up front — glossing every word of
@@ -29,10 +29,8 @@ export function GlossSheet({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [showGloss, setShowGloss] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const wordAudio = useRef<HTMLAudioElement | null>(null)
-  const chinese = hasChinese(gloss?.senses ?? [])
 
   useEffect(() => {
     if (!headword) return
@@ -40,7 +38,6 @@ export function GlossSheet({
     setLoading(true)
     setGloss(null)
     setSaved(false)
-    setShowGloss(false)
     setError(null)
 
     void glossWord({ data: { headword } })
@@ -135,22 +132,6 @@ export function GlossSheet({
 
         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-soft">
           {gloss?.ipa ? <span className="selectable">{gloss.ipa}</span> : null}
-          {/* Off until asked for, as on a feed card: the English below is the
-              exercise, and a translation in plain sight is read instead. */}
-          {chinese ? (
-            <button
-              type="button"
-              onClick={() => setShowGloss((shown) => !shown)}
-              aria-pressed={showGloss}
-              className={`rounded-full border px-2 py-px text-[0.6875rem] font-bold ${
-                showGloss
-                  ? 'border-transparent bg-surface-sunk text-ink-soft'
-                  : 'border-hairline text-ink-faint'
-              }`}
-            >
-              中文
-            </button>
-          ) : null}
           {/* The sentence is behind the sheet and already read, so this is the
               speaker and nothing else — the article says the rest. */}
           {onPlaySentence ? (
@@ -183,19 +164,23 @@ export function GlossSheet({
                     key={`${sense.pos}-${index}`}
                     className="card-soft px-3.5 py-2.5"
                   >
+                    {/* The Chinese shares the line with the definition, as on
+                        a feed card: it is the word rather than the definition
+                        said again, and somebody who tapped mid-article wants
+                        it at a glance. */}
                     <p className="text-[0.9375rem] leading-snug">
                       {sense.pos ? (
                         <span className="kicker mr-1.5 inline">
                           {sense.pos}{' '}
                         </span>
                       ) : null}
+                      {sense.zh ? (
+                        <span className="selectable mr-1.5 font-bold">
+                          {sense.zh}
+                        </span>
+                      ) : null}
                       <span className="selectable">{sense.definition}</span>
                     </p>
-                    {showGloss && sense.zh ? (
-                      <p className="selectable mt-1 text-[0.9375rem] leading-snug text-ink-soft">
-                        {sense.zh}
-                      </p>
-                    ) : null}
                     {sense.examples[0] ? (
                       <p className="selectable mt-1 text-sm italic leading-snug text-ink-soft">
                         {sense.examples[0]}
