@@ -8,7 +8,7 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "vite dev --port 3000",
+    "dev": "vite dev --port 4000",
     "predev": "wrangler d1 migrations apply english-lessons --local",
     "generate-routes": "tsr generate",
     "build": "vite build",
