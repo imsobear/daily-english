@@ -16,7 +16,7 @@ pass writes `detail` and it walks the pool alone.
 
 | Topic | Decision |
 |---|---|
-| Senses | One column, `senses`: `[{pos, definition, zh, examples}]`, carrying the Chinese the 中文 button reveals. Replaces `definitions`, `examples` and `detail.senses`. |
+| Senses | One column, `senses`: `[{pos, definition, zh, examples}]`, carrying the Chinese shown beside each definition. Replaces `definitions`, `examples` and `detail.senses`. |
 | Examples | A list per sense, none at word level. The model writes one to begin with; the shape is plural so a sense can grow a second without another migration. Everything that wants "an example" takes the first of the first sense, which is what it already does. |
 | Collocations, family | Kept, as two flat columns. They are the word page's "Goes with" and "Same family". |
 | `usage` | Dropped — from the column, the type, the prompt and the parser. It has been displayed nowhere since the card and the word page both dropped it. |

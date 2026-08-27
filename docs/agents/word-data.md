@@ -43,14 +43,15 @@ display only; the speaker button does not use it.
 
 **`senses`** is the word. The feed card, the word page and the sheet that opens
 on a tapped word all render it the same way — one box per sense, up to three,
-`zh` behind the 中文 button, the first example in italics underneath — so a word
-looks the same wherever it is met. `zh` is the word itself in Chinese — 风险；危险,
-what a paper dictionary prints opposite the entry — and not the English
-definition translated: somebody who reaches for the button is stuck, and wants
-the word rather than another sentence to work through. `examples` is a list so a
-sense can grow a second sentence without a migration. The quiz reads a single
-line out of it, the first sense and its first example, and an empty list is what
-puts "Looking this one up…" on a feed card.
+`zh` in bold ahead of the definition it belongs to, the first example in italics
+underneath — so a word looks the same wherever it is met. `zh` is the word itself
+in Chinese — 风险；危险, what a paper dictionary prints opposite the entry — and not
+the English definition translated. That is why it is in plain sight rather than
+behind a button: two characters cost a card no room and stop nobody reading the
+English, where a translated sentence would be read instead of it. `examples` is
+a list so a sense can grow a second sentence without a migration. The quiz reads
+a single line out of it, the first sense and its first example, and an empty list
+is what puts "Looking this one up…" on a feed card.
 
 **`collocations`** is the "Goes with" row of chips on the word page and
 **`family`** is "Same family" below it. Neither appears on the feed card — a

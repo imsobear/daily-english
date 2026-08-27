@@ -10,7 +10,6 @@ import {
   Spinner,
 } from '#/components/ui'
 import { BROWSE_SOURCES, type BrowseSource } from '#/lib/browse'
-import { hasChinese } from '#/lib/word-card'
 import {
   getBrowseMore,
   getBrowseStart,
@@ -396,10 +395,8 @@ function WordSlide({
   onDismiss: () => void
 }) {
   const mine = Boolean(card.wordId)
-  const [gloss, setGloss] = useState(false)
   const percent =
     card.familiarity != null ? Math.round(card.familiarity * 100) : null
-  const chinese = hasChinese(card.senses)
   /*
    * Meanings and nothing else. A card is read in a second on the way past, and
    * everything that was competing with the definitions for that second —
@@ -447,27 +444,6 @@ function WordSlide({
                     {card.level}
                   </span>
                 ) : null}
-                {/*
-                  Up here with the pronunciation, where it is in the same place
-                  on every card, rather than trailing whatever the last sense
-                  happens to be. Off until asked for: the English below is the
-                  exercise, and a translation in plain sight is read instead of
-                  it. One tap is a small enough price for being stuck.
-                */}
-                {chinese ? (
-                  <button
-                    type="button"
-                    onClick={() => setGloss((shown) => !shown)}
-                    aria-pressed={gloss}
-                    className={`rounded-full border px-2 py-px text-[0.6875rem] font-bold ${
-                      gloss
-                        ? 'border-transparent bg-surface-sunk text-ink-soft'
-                        : 'border-hairline text-ink-faint'
-                    }`}
-                  >
-                    中文
-                  </button>
-                ) : null}
               </p>
             </div>
             {mine && percent != null ? (
@@ -507,19 +483,25 @@ function WordSlide({
                       key={`${sense.pos}-${index}`}
                       className="card-soft px-3.5 py-2.5"
                     >
+                      {/*
+                        The Chinese is the word rather than the definition
+                        said again, so it goes on the line and not under it:
+                        two characters cost nothing a card cannot spare, and
+                        they are the fastest way into a sense on the way past.
+                      */}
                       <p className="text-[0.9375rem] leading-snug">
                         {sense.pos ? (
                           <span className="kicker mr-1.5 inline">
                             {sense.pos}{' '}
                           </span>
                         ) : null}
+                        {sense.zh ? (
+                          <span className="selectable mr-1.5 font-bold">
+                            {sense.zh}
+                          </span>
+                        ) : null}
                         <span className="selectable">{sense.definition}</span>
                       </p>
-                      {gloss && sense.zh ? (
-                        <p className="selectable mt-1 text-[0.9375rem] leading-snug text-ink-soft">
-                          {sense.zh}
-                        </p>
-                      ) : null}
                       {sense.examples[0] ? (
                         <p className="selectable mt-1 text-sm italic leading-snug text-ink-soft">
                           {sense.examples[0]}
