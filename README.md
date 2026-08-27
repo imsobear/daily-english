@@ -71,7 +71,7 @@ The Chrome extension lives in `packages/chrome-extension`. It adds a selected wo
 pnpm install
 cp .dev.vars.example .dev.vars   # then fill in keys you actually need
 pnpm mock:ai                     # http://127.0.0.1:8799 — keep this running
-pnpm dev                         # http://localhost:3000
+pnpm dev                         # http://localhost:4000
 ```
 
 `pnpm mock:ai` stands in for DeepSeek and OpenAI speech so a local run does not spend API credit. The mock writes placeholder prose on purpose. On the login screen, **Sign in as the test learner** exists only in development.
