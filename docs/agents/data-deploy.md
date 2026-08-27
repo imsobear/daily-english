@@ -59,12 +59,18 @@ Everything it writes is shared by every learner, so it is paid once.
 [How a word is built](word-data.md) covers what each phase writes and in what
 order the words are taken.
 
-Cards are rationed apart from the rest. Neurons are billed per token written, so
-one card off `@cf/openai/gpt-oss-120b` is roughly seventy-five of them, and the
-free 10,000 a day is worth about 130. A run therefore writes a hundred and
-stops, leaving room for a retry or two, and the next run picks up where it left
-off. `'{"describe":500}'` spends past the allowance on purpose, at roughly a
-dollar per thousand cards.
+Cards are rationed apart from the rest. Measured on `@cf/openai/gpt-oss-120b`, a
+card is 415 tokens in and about 925 out, which is 76 Neurons; the free
+allocation of 10,000 a day covers about 130, and the rest bills at $0.011 per
+1,000. A run writes `DESCRIBE_BUDGET` — four hundred, about a quarter — and
+stops, and the next run picks up where it left off.
+
+Spending past the allowance is deliberate and self-limiting: only an uncarded
+word costs anything, so four hundred a night finishes the 4,600-word pool in a
+fortnight for a few dollars in total, after which a run finds only the words
+somebody saved that day and spends almost nothing. Drop the budget to 130 to
+stay inside the allowance, or pass `'{"describe":1000}'` to a manual trigger to
+go faster.
 
 The model is called over the REST API rather than through an `ai` binding. The
 binding has no local implementation, so declaring it makes the test pool open an
