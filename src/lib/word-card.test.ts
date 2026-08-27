@@ -15,7 +15,7 @@ const CARD = {
       pos: 'noun',
       definition: 'the possibility that something bad will happen',
       example: 'The risk of flooding has risen.',
-      zh: '风险，可能发生的坏事',
+      zh: '风险；危险',
     },
   ],
   collocations: ['take a risk', 'risk factor'],
@@ -28,7 +28,7 @@ describe('parseWordCard', () => {
 
     expect(card?.senses).toHaveLength(1)
     expect(card?.collocations).toEqual(['take a risk', 'risk factor'])
-    expect(card?.senses[0].zh).toBe('风险，可能发生的坏事')
+    expect(card?.senses[0].zh).toBe('风险；危险')
   })
 
   it('gives a sense its example as a list, ready for a second', () => {
@@ -128,13 +128,22 @@ describe('the Chinese on a sense', () => {
     )?.senses[0].zh
   }
 
-  it('keeps a gloss', () => {
-    expect(zhOf('风险，可能发生的坏事')).toBe('风险，可能发生的坏事')
-    expect(zhOf('使…面临危险或损失')).toBe('使…面临危险或损失')
+  it('keeps the word itself in Chinese', () => {
+    expect(zhOf('风险；危险')).toBe('风险；危险')
+    expect(zhOf('使…冒风险')).toBe('使…冒风险')
   })
 
   it('throws out an English answer in the Chinese slot', () => {
     expect(zhOf('a chance of harm')).toBeNull()
+  })
+
+  it('throws out an explanation given where the word was asked for', () => {
+    // What is wanted opposite "optimistic" is 乐观的. A model that answers
+    // with the definition in Chinese instead gives the learner something to
+    // read rather than something to know, and runs long doing it.
+    expect(
+      zhOf('指对未来或情况持有积极的期待，相信事情会朝好的方向发展'),
+    ).toBeNull()
   })
 
   it('throws out a translated example sentence', () => {
