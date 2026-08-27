@@ -53,7 +53,9 @@ function ExploreScreen() {
   const [busy, setBusy] = useState(false)
   const [marks, setMarks] = useState<Record<string, Mark>>({})
 
-  const scroller = useRef<HTMLDivElement>(null)
+  const head = useRef<HTMLElement>(null)
+  const headHeight = useRef(0)
+  const feed = useRef<HTMLDivElement>(null)
   const audio = useRef<HTMLAudioElement | null>(null)
   const started = useRef(false)
   const settling = useRef(0)
@@ -74,6 +76,42 @@ function ExploreScreen() {
       window.clearTimeout(settling.current)
       audio.current?.pause()
       audio.current = null
+    }
+  }, [])
+
+  /*
+   * The feed borrows the document's scrolling rather than keeping its own —
+   * see `html[data-feed]` in the stylesheet for why a phone browser will only
+   * fold its bars away for the one and not the other. The flag stands for as
+   * long as this screen does, and the header is measured rather than assumed
+   * so a card snaps to rest exactly underneath it.
+   *
+   * The handler is the one from the first render, which is all it can be
+   * given the listener is attached once, and all it needs to be: everything
+   * it reads that moves it reads from a ref.
+   */
+  useEffect(() => {
+    const root = document.documentElement
+    const header = head.current
+    root.dataset.feed = ''
+
+    function measure() {
+      const height = header?.offsetHeight
+      if (!height) return
+      headHeight.current = height
+      root.style.setProperty('--feed-head', `${height}px`)
+    }
+
+    measure()
+    const watcher = new ResizeObserver(measure)
+    if (header) watcher.observe(header)
+    window.addEventListener('scroll', onScroll, { passive: true })
+
+    return () => {
+      watcher.disconnect()
+      window.removeEventListener('scroll', onScroll)
+      delete root.dataset.feed
+      root.style.removeProperty('--feed-head')
     }
   }, [])
 
@@ -127,15 +165,18 @@ function ExploreScreen() {
   }
 
   /*
-   * Every card is exactly one viewport tall, so where we are in the feed is
-   * arithmetic rather than a stack of observers. The next card's audio is
-   * warmed on arrival: the endpoint synthesises on first play, and nobody
-   * should wait for that.
+   * Every card is the same height, so where we are in the feed is arithmetic
+   * rather than a stack of observers: how far the first card has travelled
+   * past the header, over the height of one. The next card's audio is warmed
+   * on arrival: the endpoint synthesises on first play, and nobody should
+   * wait for that.
    */
   function onScroll() {
-    const element = scroller.current
-    if (!element || element.clientHeight === 0) return
-    const index = Math.round(element.scrollTop / element.clientHeight)
+    const first = feed.current?.firstElementChild
+    if (!first) return
+    const box = first.getBoundingClientRect()
+    if (box.height === 0) return
+    const index = Math.round((headHeight.current - box.top) / box.height)
     if (index !== state.current.active) {
       state.current.active = index
       const card = state.current.cards[index]
@@ -168,7 +209,7 @@ function ExploreScreen() {
       setEnd(page.end)
       state.current.active = 0
       window.clearTimeout(settling.current)
-      scroller.current?.scrollTo({ top: 0 })
+      window.scrollTo({ top: 0 })
     } catch {
       // Leave the old feed up rather than blanking the screen.
     } finally {
@@ -206,53 +247,57 @@ function ExploreScreen() {
 
   return (
     /*
-     * Pinned rather than laid out in the page's flow. A card is one screen
-     * tall, and `h-full` only means anything if some ancestor has a height to
-     * take a percentage of — the app shell is `min-h-dvh`, which is a floor
-     * and not a height. Anchoring to the viewport, stopping where the tab bar
-     * starts, is what gives the feed a definite box to divide.
+     * In the page's flow, not pinned to the viewport. A pinned feed scrolls
+     * inside itself, and a browser that never sees the document move keeps
+     * its address bar and toolbar out for the whole visit — on a feed of
+     * one-screen cards that is the two strips of screen the cards most want.
+     * The cards take their height from `--feed-slide` instead.
      */
-    <div
-      className="fixed inset-x-0 top-0 flex flex-col"
-      style={{ bottom: 'calc(3.5rem + env(safe-area-inset-bottom))' }}
-    >
-      <header className="safe-top flex justify-center px-3.5 pb-2">
+    <div className="flex flex-1 flex-col">
+      {/* Stays put while the cards go by, so the three feeds are always a
+          tap away rather than a flick back to the top. */}
+      <header
+        ref={head}
+        className="safe-top sticky top-0 z-20 bg-page/90 px-3.5 pb-2 backdrop-blur-xl"
+      >
         <h1 className="sr-only">Explore</h1>
-        <div
-          role="tablist"
-          aria-label="Which words to show"
-          className="flex gap-0.5 rounded-full bg-surface-sunk p-0.5"
-        >
-          {BROWSE_SOURCES.map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="tab"
-              aria-selected={option === source}
-              onClick={() => void choose(option)}
-              className={`min-h-8 rounded-full px-3.5 text-xs font-extrabold transition-colors ${
-                option === source
-                  ? 'bg-surface text-ink shadow-[var(--shadow-card)]'
-                  : 'text-ink-soft'
-              }`}
-            >
-              {LABELS[option]}
-            </button>
-          ))}
+        <div className="flex justify-center">
+          <div
+            role="tablist"
+            aria-label="Which words to show"
+            className="flex gap-0.5 rounded-full bg-surface-sunk p-0.5"
+          >
+            {BROWSE_SOURCES.map((option) => (
+              <button
+                key={option}
+                type="button"
+                role="tab"
+                aria-selected={option === source}
+                onClick={() => void choose(option)}
+                className={`min-h-8 rounded-full px-3.5 text-xs font-extrabold transition-colors ${
+                  option === source
+                    ? 'bg-surface text-ink shadow-[var(--shadow-card)]'
+                    : 'text-ink-soft'
+                }`}
+              >
+                {LABELS[option]}
+              </button>
+            ))}
+          </div>
         </div>
-      </header>
 
-      {start.levelHint ? (
-        <Link
-          to="/settings"
-          className="mx-3.5 mb-2 flex items-center gap-2 rounded-2xl bg-brand-50 px-3.5 py-2 text-sm font-bold text-brand-700"
-        >
-          <span className="min-w-0 flex-1">
-            You know most of {start.level}. Try {start.levelHint}?
-          </span>
-          <ArrowUpRight className="size-4 shrink-0" />
-        </Link>
-      ) : null}
+        {start.levelHint ? (
+          <Link
+            to="/settings"
+            className="mt-2 flex items-center gap-2 rounded-2xl bg-brand-50 px-3.5 py-2 text-sm font-bold text-brand-700"
+          >
+            <span className="min-w-0 flex-1">
+              You know most of {start.level}. Try {start.levelHint}?
+            </span>
+            <ArrowUpRight className="size-4 shrink-0" />
+          </Link>
+        ) : null}
+      </header>
 
       {cards.length === 0 ? (
         <div className="p-3.5">
@@ -287,13 +332,7 @@ function ExploreScreen() {
           />
         </div>
       ) : (
-        <div
-          ref={scroller}
-          onScroll={onScroll}
-          onTouchStart={arm}
-          onMouseDown={arm}
-          className="min-h-0 flex-1 snap-y snap-mandatory overflow-y-auto overscroll-contain"
-        >
+        <div ref={feed} onTouchStart={arm} onMouseDown={arm}>
           {cards.map((card, index) => (
             <WordSlide
               // Wrapping the learner's list can show a word twice in one feed,
@@ -308,7 +347,7 @@ function ExploreScreen() {
             />
           ))}
 
-          <div className="flex h-full snap-start snap-always flex-col items-center justify-center gap-3 px-8 text-center">
+          <div className="flex h-[var(--feed-slide)] snap-start snap-always flex-col items-center justify-center gap-3 px-8 text-center">
             {end ? (
               <>
                 <p className="text-lg font-extrabold">That is the lot</p>
@@ -324,6 +363,14 @@ function ExploreScreen() {
               <Spinner className="size-6 text-ink-faint" />
             )}
           </div>
+
+          {/*
+            Room to fold the bars into. Cards are cut for the screen at its
+            smallest, so once the browser's bars go the screen is taller than
+            the page was built for and the scroll runs out before the last
+            card can reach the top. This is the difference, and nothing else.
+          */}
+          <div aria-hidden className="h-[calc(100lvh-100svh)]" />
         </div>
       )}
     </div>
@@ -361,7 +408,7 @@ function WordSlide({
   const senses = card.senses.slice(0, 3)
 
   return (
-    <article className="flex h-full snap-start snap-always flex-col overflow-hidden px-4 pt-1 pb-3">
+    <article className="flex h-[var(--feed-slide)] snap-start snap-always flex-col overflow-hidden px-4 pt-1 pb-3">
       <div className="mx-auto flex min-h-0 w-full max-w-sm flex-1 flex-col overflow-hidden">
         {/*
           A word takes up a third of a screen and the buttons a little at the

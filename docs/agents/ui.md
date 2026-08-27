@@ -42,3 +42,12 @@ compact vertical rhythm, tap targets of at least 44px, and layouts that survive
 a 390px viewport. `NativeShell` supplies the standalone-mode behaviours
 (edge-swipe back, revalidate on resume); route transitions are configured in
 `src/router.tsx`.
+
+Let the document scroll. A screen that pins itself to the viewport and scrolls
+a box inside it never lets a browser fold its address bar and toolbar away, so
+in a tab it pays two strips of screen for the whole visit. The Explore feed is
+the worked example: `html[data-feed]` in `src/styles.css` holds the snapping
+and the card height, sized in `svh` because WebKit does not re-snap a track
+that changed size under it. Note also that `overflow-x: hidden` on `body` would
+quietly undo all of this — one axis hidden makes the other a scroll container —
+which is why it is `clip`.

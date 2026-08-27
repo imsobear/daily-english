@@ -188,6 +188,31 @@
     overscroll-behavior-y: none;
   }
 
+  /*
+   * The card feed, while it is on screen. A phone browser only folds its
+   * address bar and toolbar away when the document itself is what moved, so
+   * the feed cannot keep its own scrolling box: the snapping belongs to the
+   * page. `--feed-head` is the sticky header the cards slide under, measured
+   * on mount; `--feed-slide` is what is left of a screen once the header and
+   * the tab bar have taken theirs.
+   *
+   * Small viewport units, deliberately. A card sized to the screen as it is
+   * now would be resized the moment the bars fold, and WebKit does not
+   * re-snap a track that changed size underneath it — the feed would land
+   * between two cards. Sized to the screen at its smallest, nothing moves;
+   * folding the bars just opens a strip of quiet under the card.
+   */
+  html[data-feed] {
+    /* What the header comes to today, until the measurement lands as an
+       inline style over the top of this. */
+    --feed-head: 3.5rem;
+    --feed-slide: calc(
+      100svh - var(--feed-head) - 3.5rem - env(safe-area-inset-bottom)
+    );
+    scroll-snap-type: y mandatory;
+    scroll-padding-top: var(--feed-head);
+  }
+
   body {
     margin: 0;
     background-color: var(--page);
@@ -197,7 +222,11 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    overflow-x: hidden;
+    /* `clip` rather than `hidden`: hiding one axis turns the other into a
+       scroll container, and a scrolling body is a body whose scrolls no
+       longer reach the document — which is the only scroll a phone browser
+       watches to decide whether to fold its own bars away. */
+    overflow-x: clip;
     /* Labels and article text are things you tap, not things you select. The
        grey flash, the long-press callout and the selection magnifier all read
        as "web page", and the magnifier in particular fights the tap-a-word
