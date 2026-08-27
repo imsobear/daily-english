@@ -1,10 +1,26 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { Check, Copy, LogOut, Minus, Moon, Plus, Sun } from 'lucide-react'
+import {
+  Check,
+  Copy,
+  LogOut,
+  Minus,
+  Moon,
+  Plus,
+  Sun,
+  Volume2,
+  VolumeOff,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { PageHeader } from '#/components/bottom-nav'
 import { Button, Card, Chip, Spinner } from '#/components/ui'
-import { CEFR_LEVELS, TOPIC_PRESETS, type CefrLevel } from '#/lib/settings'
+import {
+  CEFR_LEVELS,
+  TOPIC_PRESETS,
+  readAutoplay,
+  writeAutoplay,
+  type CefrLevel,
+} from '#/lib/settings'
 import { cn } from '#/lib/utils'
 import { getAccount, signOut, type AccountSnapshot } from '#/server/auth'
 import { getSettings, saveSettings } from '#/server/settings'
@@ -202,11 +218,77 @@ function SettingsPage() {
         ) : null}
       </div>
 
+      {/* Below the account settings sit the ones that belong to this phone
+          rather than to the learner, and are kept in its storage. */}
       <div className="space-y-3 px-3.5 pb-8">
+        <AutoplayCard />
         <ThemeCard />
         <AccountSection account={account} />
       </div>
     </>
+  )
+}
+
+function Switch({
+  on,
+  label,
+  onChange,
+}: {
+  on: boolean
+  label: string
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={() => onChange(!on)}
+      className={cn(
+        'relative h-8 w-14 shrink-0 rounded-full transition-colors',
+        on ? 'bg-brand-500' : 'bg-hairline-strong',
+      )}
+    >
+      {/* Anchored with `left`, since an absolute child with `left: auto`
+          inherits the button's centred static position. */}
+      <span
+        className={cn(
+          'absolute left-1 top-1 size-6 rounded-full bg-white shadow-sm transition-transform',
+          on ? 'translate-x-6' : 'translate-x-0',
+        )}
+      />
+    </button>
+  )
+}
+
+function AutoplayCard() {
+  // On is the default and the common case, so the first paint says so and the
+  // effect corrects it — storage cannot be read while rendering on the server.
+  const [on, setOn] = useState(true)
+
+  useEffect(() => setOn(readAutoplay()), [])
+
+  function apply(next: boolean) {
+    setOn(next)
+    writeAutoplay(next)
+  }
+
+  return (
+    <Card className="flex items-center gap-3">
+      <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-surface-sunk text-ink-soft">
+        {on ? <Volume2 className="size-5" /> : <VolumeOff className="size-5" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-extrabold">Speak each card</p>
+        <p className="text-xs text-ink-soft">
+          {on
+            ? 'Explore says a word when you land on it'
+            : 'Explore stays quiet until you tap a speaker'}
+        </p>
+      </div>
+      <Switch on={on} label="Speak each card in Explore" onChange={apply} />
+    </Card>
   )
 }
 
@@ -239,26 +321,7 @@ function ThemeCard() {
           {dark ? 'Dark' : 'Light'} theme on this device
         </p>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={dark}
-        aria-label="Dark mode"
-        onClick={() => apply(!dark)}
-        className={cn(
-          'relative h-8 w-14 shrink-0 rounded-full transition-colors',
-          dark ? 'bg-brand-500' : 'bg-hairline-strong',
-        )}
-      >
-        {/* Anchored with `left`, since an absolute child with `left: auto`
-            inherits the button's centred static position. */}
-        <span
-          className={cn(
-            'absolute left-1 top-1 size-6 rounded-full bg-white shadow-sm transition-transform',
-            dark ? 'translate-x-6' : 'translate-x-0',
-          )}
-        />
-      </button>
+      <Switch on={dark} label="Dark mode" onChange={apply} />
     </Card>
   )
 }

@@ -59,3 +59,30 @@ export const defaultSettings: Settings = {
   topics: [],
   wordsPerLesson: 10,
 }
+
+/**
+ * Whether the Explore feed speaks a card when you land on it.
+ *
+ * Device-local like the theme rather than part of the account: it answers
+ * "can I have sound here", which is about the room, the headphones and the
+ * people around you, not about the learner. On by default — hearing the word
+ * is half of what a card is for, and the speaker on each card is the way back
+ * to a single word once it is off.
+ */
+const AUTOPLAY_KEY = 'explore-autoplay'
+
+export function readAutoplay(): boolean {
+  try {
+    return localStorage.getItem(AUTOPLAY_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+export function writeAutoplay(on: boolean) {
+  try {
+    localStorage.setItem(AUTOPLAY_KEY, on ? 'on' : 'off')
+  } catch {
+    // Private browsing can refuse storage; the choice just lasts one visit.
+  }
+}

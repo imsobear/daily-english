@@ -10,6 +10,7 @@ import {
   Spinner,
 } from '#/components/ui'
 import { BROWSE_SOURCES, type BrowseSource } from '#/lib/browse'
+import { readAutoplay } from '#/lib/settings'
 import {
   getBrowseMore,
   getBrowseStart,
@@ -58,6 +59,12 @@ function ExploreScreen() {
   const audio = useRef<HTMLAudioElement | null>(null)
   const started = useRef(false)
   const settling = useRef(0)
+  /*
+   * Read once on arrival rather than watched: storage is not there to read
+   * during the server render, and the switch is on another screen, which this
+   * one is remounted from.
+   */
+  const autoplay = useRef(true)
   // Read inside the scroll handler, which must not be rebuilt on every card.
   const state = useRef({ cards, cursor, seed, end, busy, source, active: 0 })
   state.current = {
@@ -93,6 +100,7 @@ function ExploreScreen() {
     const root = document.documentElement
     const header = head.current
     root.dataset.feed = ''
+    autoplay.current = readAutoplay()
 
     function measure() {
       const height = header?.offsetHeight
@@ -152,7 +160,7 @@ function ExploreScreen() {
    * unlocking instead.
    */
   function arm() {
-    if (started.current) return
+    if (started.current || !autoplay.current) return
     started.current = true
     const card = state.current.cards[state.current.active]
     if (!card) return
@@ -168,7 +176,8 @@ function ExploreScreen() {
    * rather than a stack of observers: how far the first card has travelled
    * past the header, over the height of one. The next card's audio is warmed
    * on arrival: the endpoint synthesises on first play, and nobody should
-   * wait for that.
+   * wait for that. A silenced feed warms nothing — there is no play to be
+   * ahead of, and the speaker on a card is a tap somebody chose to wait for.
    */
   function onScroll() {
     const first = feed.current?.firstElementChild
@@ -182,11 +191,13 @@ function ExploreScreen() {
       // A flick past four cards should speak the one it lands on, not all
       // four, so the word waits for the scrolling to stop.
       window.clearTimeout(settling.current)
-      if (card) {
+      if (card && autoplay.current) {
         settling.current = window.setTimeout(() => speak(card), SETTLE_MS)
       }
       const next = state.current.cards[index + 1]
-      if (next) void fetch(next.audioUrl).catch(() => undefined)
+      if (next && autoplay.current) {
+        void fetch(next.audioUrl).catch(() => undefined)
+      }
     }
     if (index >= state.current.cards.length - 3) void loadMore()
   }
