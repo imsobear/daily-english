@@ -3,6 +3,7 @@ import { ChevronLeft, Trash2, Volume2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { Button, Card, ProgressRing, Spinner } from '#/components/ui'
+import { hasChinese } from '#/lib/word-card'
 import { deleteWord, getWord, refreshWord } from '#/server/words'
 
 export const Route = createFileRoute('/_app/words/$wordId')({
@@ -18,6 +19,7 @@ function WordCardPage() {
   const word = Route.useLoaderData()
   const router = useRouter()
   const [pending, setPending] = useState(false)
+  const [gloss, setGloss] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const [speaking, setSpeaking] = useState(false)
@@ -65,6 +67,7 @@ function WordCardPage() {
   }
 
   const percent = Math.round(word.familiarity * 100)
+  const chinese = hasChinese(word.senses)
 
   return (
     <div className="flex min-h-full flex-col">
@@ -155,33 +158,96 @@ function WordCardPage() {
           </Card>
         ) : (
           <>
+            {/*
+              No pattern here, deliberately. It belongs on the feed, where a
+              card is glanced at and a definition is not enough to use the
+              word. This page is what you open when you want the whole entry,
+              and every sense below already carries a sentence.
+            */}
             <section>
-              <h3 className="kicker mb-2 px-1">Meanings</h3>
-              <ul className="space-y-2">
-                {word.definitions.map((sense, index) => (
-                  <li
-                    key={`${sense.partOfSpeech}-${index}`}
-                    className="card-soft px-4 py-3"
+              <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                <h3 className="kicker">Meanings</h3>
+                {/*
+                  The translation lives with the thing it translates, and stays
+                  out of sight until asked for: English in plain view beside its
+                  Chinese is English nobody reads.
+                */}
+                {chinese ? (
+                  <button
+                    type="button"
+                    onClick={() => setGloss((shown) => !shown)}
+                    aria-pressed={gloss}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-bold ${
+                      gloss
+                        ? 'border-transparent bg-surface-sunk text-ink-soft'
+                        : 'border-hairline text-ink-faint'
+                    }`}
                   >
-                    <p className="kicker">{sense.partOfSpeech}</p>
-                    <p className="mt-1 text-[1.0625rem] leading-relaxed">
+                    中文
+                  </button>
+                ) : null}
+              </div>
+              <ul className="space-y-1.5">
+                {word.senses.map((sense, index) => (
+                  <li
+                    key={`${sense.pos}-${index}`}
+                    className="card-soft px-3.5 py-2.5"
+                  >
+                    <p className="text-[0.9375rem] leading-snug">
+                      {sense.pos ? (
+                        <span className="kicker mr-1.5 inline">
+                          {sense.pos}{' '}
+                        </span>
+                      ) : null}
                       {sense.definition}
                     </p>
+                    {gloss && sense.zh ? (
+                      <p className="mt-1 text-[0.9375rem] leading-snug text-ink-soft">
+                        {sense.zh}
+                      </p>
+                    ) : null}
+                    {sense.examples.map((example) => (
+                      <p
+                        key={example}
+                        className="mt-1 text-sm italic leading-snug text-ink-soft"
+                      >
+                        {example}
+                      </p>
+                    ))}
                   </li>
                 ))}
               </ul>
             </section>
 
-            {word.examples.length > 0 ? (
+            {word.collocations.length > 0 ? (
               <section>
-                <h3 className="kicker mb-2 px-1">In use</h3>
-                <ul className="space-y-2">
-                  {word.examples.map((example) => (
+                <h3 className="kicker mb-2 px-1">Goes with</h3>
+                <ul className="flex flex-wrap gap-2">
+                  {word.collocations.map((phrase) => (
                     <li
-                      key={example}
-                      className="rounded-2xl bg-surface-sunk px-4 py-3 text-[1.0625rem] italic leading-relaxed text-ink-soft"
+                      key={phrase}
+                      className="rounded-full border border-hairline px-3 py-1.5 text-[0.9375rem] font-bold text-ink-soft"
                     >
-                      {example}
+                      {phrase}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {word.family.length > 0 ? (
+              <section>
+                <h3 className="kicker mb-2 px-1">Same family</h3>
+                <ul className="space-y-1.5">
+                  {word.family.map((relative) => (
+                    <li
+                      key={relative.word}
+                      className="flex items-baseline gap-2 rounded-2xl bg-surface-sunk px-4 py-2.5"
+                    >
+                      <span className="text-[1.0625rem] font-bold">
+                        {relative.word}
+                      </span>
+                      <span className="kicker">{relative.pos}</span>
                     </li>
                   ))}
                 </ul>

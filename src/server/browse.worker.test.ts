@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { getDb } from '#/db'
 import { userSettings, users, wordOffers, words } from '#/db/schema'
-import { saveEntry } from '#/lib/entries'
+import { saveDictionary } from '#/lib/entries'
 import { poolEntry, poolLevel } from '#/lib/vocabulary'
 import { browsePageFor } from '#/server/browse'
 import { saveWordsForUser } from '#/server/words'
@@ -198,26 +198,17 @@ describe('browsePageFor', () => {
 
   it('puts every sense and example on the card', async () => {
     const headword = `w${crypto.randomUUID().slice(0, 8)}`
-    await saveEntry(getDb(), {
-      headword,
-      ipa: '/test/',
-      definitions: [
-        { partOfSpeech: 'noun', definition: 'a thing' },
-        { partOfSpeech: 'verb', definition: 'to do it' },
-      ],
-      examples: ['first example', 'second example'],
-      senseSource: 'model',
-    })
+    const senses = [
+      { pos: 'noun', definition: 'a thing', zh: '东西', examples: ['first'] },
+      { pos: 'verb', definition: 'to do it', zh: null, examples: ['second'] },
+    ]
+    await saveDictionary(getDb(), headword, { headword, ipa: '/test/', senses })
     await saveWordsForUser(user, [headword], 'manual')
 
     const { cards } = await page('mine')
 
     expect(cards).toHaveLength(1)
-    expect(cards[0].definitions).toEqual([
-      { partOfSpeech: 'noun', definition: 'a thing' },
-      { partOfSpeech: 'verb', definition: 'to do it' },
-    ])
-    expect(cards[0].examples).toEqual(['first example', 'second example'])
+    expect(cards[0].senses).toEqual(senses)
   })
 
   it('reports the end when there is nothing to show', async () => {

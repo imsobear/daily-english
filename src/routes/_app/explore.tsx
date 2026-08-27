@@ -10,6 +10,7 @@ import {
   Spinner,
 } from '#/components/ui'
 import { BROWSE_SOURCES, type BrowseSource } from '#/lib/browse'
+import { hasChinese } from '#/lib/word-card'
 import {
   getBrowseMore,
   getBrowseStart,
@@ -345,95 +346,137 @@ function WordSlide({
   onDismiss: () => void
 }) {
   const mine = Boolean(card.wordId)
+  const [gloss, setGloss] = useState(false)
   const percent =
     card.familiarity != null ? Math.round(card.familiarity * 100) : null
-  // A snap card cannot scroll, so only the senses that fit a phone stay on it.
-  const senses = card.definitions.slice(0, 3)
-  const samples = card.examples.slice(0, 2)
+  const chinese = hasChinese(card.senses)
+  /*
+   * Meanings and nothing else. A card is read in a second on the way past, and
+   * everything that was competing with the definitions for that second —
+   * patterns, collocation chips — is a tap away on the word page, where there
+   * is room to take them in.
+   *
+   * A snap card cannot scroll either, so only what fits a phone stays on it.
+   */
+  const senses = card.senses.slice(0, 3)
 
   return (
     <article className="flex h-full snap-start snap-always flex-col overflow-hidden px-4 pt-1 pb-3">
       <div className="mx-auto flex min-h-0 w-full max-w-sm flex-1 flex-col overflow-hidden">
-        <div className="flex items-start gap-2.5">
-          <div className="min-w-0 flex-1">
-            <button
-              type="button"
-              onClick={onSpeak}
-              aria-label={`Hear ${card.headword}`}
-              className="flex w-full items-center gap-2 text-left"
-            >
-              <span className="selectable min-w-0 text-[1.75rem] font-black leading-none tracking-tight">
-                {card.headword}
-              </span>
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-sunk text-ink-soft">
-                <Volume2 className="size-4" />
-              </span>
-            </button>
-            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-ink-soft">
-              {card.ipa ? <span>{card.ipa}</span> : null}
-              {card.level ? (
-                <span className="rounded-full bg-surface-sunk px-1.5 py-px text-[0.625rem] font-black tracking-wider">
-                  {card.level}
+        {/*
+          A word takes up a third of a screen and the buttons a little at the
+          bottom, so left alone the card is content pinned to the ceiling over
+          a drop of empty space. Centring what is left between the two puts the
+          word where a thumb rests and the eye already is.
+        */}
+        <div className="flex min-h-0 flex-1 flex-col justify-center overflow-hidden">
+          <div className="flex items-start gap-2.5">
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={onSpeak}
+                aria-label={`Hear ${card.headword}`}
+                className="flex w-full items-center gap-2 text-left"
+              >
+                <span className="selectable min-w-0 text-[1.75rem] font-black leading-none tracking-tight">
+                  {card.headword}
                 </span>
-              ) : null}
-            </p>
-          </div>
-          {mine && percent != null ? (
-            <ProgressRing
-              value={percent}
-              max={100}
-              size={48}
-              stroke={6}
-              tone={percent >= 80 ? 'grass' : 'brand'}
-            >
-              <span className="tabular text-[0.625rem] font-black">
-                {percent}%
-              </span>
-            </ProgressRing>
-          ) : null}
-        </div>
-
-        {card.pending ? (
-          <p className="mt-4 flex items-center gap-2 text-sm text-ink-faint">
-            <Spinner /> Looking this one up…
-          </p>
-        ) : (
-          <div className="mt-3 min-h-0 overflow-hidden">
-            {senses.length === 0 ? (
-              <p className="text-sm leading-snug text-ink-soft">
-                No definition for this one yet.
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-sunk text-ink-soft">
+                  <Volume2 className="size-4" />
+                </span>
+              </button>
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-soft">
+                {card.ipa ? <span>{card.ipa}</span> : null}
+                {card.level ? (
+                  <span className="rounded-full bg-surface-sunk px-1.5 py-px text-[0.625rem] font-black tracking-wider">
+                    {card.level}
+                  </span>
+                ) : null}
+                {/*
+                  Up here with the pronunciation, where it is in the same place
+                  on every card, rather than trailing whatever the last sense
+                  happens to be. Off until asked for: the English below is the
+                  exercise, and a translation in plain sight is read instead of
+                  it. One tap is a small enough price for being stuck.
+                */}
+                {chinese ? (
+                  <button
+                    type="button"
+                    onClick={() => setGloss((shown) => !shown)}
+                    aria-pressed={gloss}
+                    className={`rounded-full border px-2 py-px text-[0.6875rem] font-bold ${
+                      gloss
+                        ? 'border-transparent bg-surface-sunk text-ink-soft'
+                        : 'border-hairline text-ink-faint'
+                    }`}
+                  >
+                    中文
+                  </button>
+                ) : null}
               </p>
-            ) : (
-              <ul className="space-y-1.5">
-                {senses.map((sense, index) => (
-                  <li
-                    key={`${sense.partOfSpeech}-${index}`}
-                    className="text-[0.9375rem] leading-snug"
-                  >
-                    {sense.partOfSpeech ? (
-                      <span className="kicker mr-1.5 inline">
-                        {sense.partOfSpeech}{' '}
-                      </span>
-                    ) : null}
-                    <span className="selectable">{sense.definition}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {samples.length > 0 ? (
-              <ul className="mt-2.5 space-y-1">
-                {samples.map((example) => (
-                  <li
-                    key={example}
-                    className="selectable text-sm italic leading-snug text-ink-soft"
-                  >
-                    {example}
-                  </li>
-                ))}
-              </ul>
+            </div>
+            {mine && percent != null ? (
+              <ProgressRing
+                value={percent}
+                max={100}
+                size={48}
+                stroke={6}
+                tone={percent >= 80 ? 'grass' : 'brand'}
+              >
+                <span className="tabular text-[0.625rem] font-black">
+                  {percent}%
+                </span>
+              </ProgressRing>
             ) : null}
           </div>
-        )}
+
+          {card.pending ? (
+            <p className="mt-4 flex items-center gap-2 text-sm text-ink-faint">
+              <Spinner /> Looking this one up…
+            </p>
+          ) : (
+            <div className="mt-3.5 min-h-0 overflow-hidden">
+              {senses.length === 0 ? (
+                <p className="text-sm leading-snug text-ink-soft">
+                  No definition for this one yet.
+                </p>
+              ) : (
+                /*
+                  A box each, as on the word page. Loose paragraphs down a screen
+                  of nothing read as one grey block a thumb flicks past, where
+                  three separated cards read as three things a word can mean.
+                */
+                <ul className="space-y-2">
+                  {senses.map((sense, index) => (
+                    <li
+                      key={`${sense.pos}-${index}`}
+                      className="card-soft px-3.5 py-2.5"
+                    >
+                      <p className="text-[0.9375rem] leading-snug">
+                        {sense.pos ? (
+                          <span className="kicker mr-1.5 inline">
+                            {sense.pos}{' '}
+                          </span>
+                        ) : null}
+                        <span className="selectable">{sense.definition}</span>
+                      </p>
+                      {gloss && sense.zh ? (
+                        <p className="selectable mt-1 text-[0.9375rem] leading-snug text-ink-soft">
+                          {sense.zh}
+                        </p>
+                      ) : null}
+                      {sense.examples[0] ? (
+                        <p className="selectable mt-1 text-sm italic leading-snug text-ink-soft">
+                          {sense.examples[0]}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
 
         {!mine || first ? (
           <div className="mt-auto flex w-full shrink-0 flex-col items-center pt-3">

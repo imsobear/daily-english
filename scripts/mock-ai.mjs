@@ -1,6 +1,6 @@
 /**
- * Stand-ins for the paid AI calls — DeepSeek chat completions and OpenAI
- * speech — so a local end-to-end run costs nothing.
+ * Stand-ins for the paid AI calls — DeepSeek chat completions, OpenAI speech
+ * and the Workers AI word cards — so a local end-to-end run costs nothing.
  *
  * The article mock deliberately returns a SHORT article the first time it is
  * asked for one, so the length-enforcement retry in generateArticle is
@@ -133,6 +133,36 @@ function readBody(req) {
 }
 
 createServer(async (req, res) => {
+  // Workers AI, which writes the word cards during the pre-warm pass. The
+  // shape matters more than the prose: what is being exercised locally is the
+  // parsing and the card, not the model.
+  if (req.url?.endsWith('/word-card')) {
+    const payload = JSON.parse((await readBody(req)) || '{}')
+    const prompt = payload.messages?.[0]?.content ?? ''
+    const word = /card for "([^"]+)"/.exec(prompt)?.[1] ?? 'word'
+    console.log(`✎ card for ${word}`)
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(
+      JSON.stringify({
+        result: {
+          response: JSON.stringify({
+            senses: [
+              {
+                pos: 'noun',
+                definition: `A mock definition of ${word}.`,
+                example: `The ${word} was hard to miss.`,
+                zh: '模拟释义',
+              },
+            ],
+            collocations: [`a real ${word}`, `${word} of something`],
+            family: [{ word: `${word}ness`, pos: 'noun' }],
+          }),
+        },
+      }),
+    )
+    return
+  }
+
   if (req.url?.endsWith('/tts')) {
     const { text = '' } = JSON.parse((await readBody(req)) || '{}')
     const started = Date.now()
@@ -169,6 +199,6 @@ createServer(async (req, res) => {
   console.log(
     `mock ai on http://127.0.0.1:${PORT}\n  chat    /v1/chat/completions\n  speech  /tts  (${
       process.platform === 'darwin' ? 'macOS say' : 'silence'
-    })`,
+    })\n  cards   /word-card`,
   ),
 )

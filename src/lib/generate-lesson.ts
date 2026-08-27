@@ -11,23 +11,23 @@ import {
   synthesizeSpeech,
   type ArticleDraft,
 } from '#/lib/ai'
+import { AiError, readDeepSeekConfig } from '#/lib/deepseek'
 import {
-  AiError,
-  isDeepSeekConfigured,
-  readDeepSeekConfig,
-} from '#/lib/deepseek'
-import {
-  ensureEntry,
-  entryExamples,
   entrySenses,
+  fillEntry,
   loadEntries,
-  needsBetterSenses,
+  loadEntry,
+  needsCard,
 } from '#/lib/entries'
 import { chunkSentences, splitSentences } from '#/lib/text'
 
 export type LessonEnv = {
   DB: D1Database
   AUDIO: R2Bucket
+  /** Workers AI, which writes the word cards. */
+  CLOUDFLARE_ACCOUNT_ID?: string
+  WORKERS_AI_API_TOKEN?: string
+  WORKERS_AI_MOCK_URL?: string
   DEEPSEEK_API_KEY?: string
   DEEPSEEK_MODEL?: string
   DEEPSEEK_BASE_URL?: string
@@ -169,8 +169,8 @@ export async function loadLessonJob(env: LessonEnv, lessonId: string) {
         // Prefer the live entry: it may have just been healed, in which case
         // the gloss snapshotted at lesson creation is the archaic one.
         definition: primary?.definition ?? row.definition,
-        partOfSpeech: primary?.partOfSpeech ?? null,
-        example: entryExamples(entry)[0] ?? null,
+        partOfSpeech: primary?.pos || null,
+        example: primary?.examples[0] ?? null,
       }
     })
   return {
@@ -192,14 +192,14 @@ export async function loadLessonJob(env: LessonEnv, lessonId: string) {
 }
 
 /**
- * Re-define words still carrying dictionaryapi.dev senses.
+ * Give the writer the best senses available for the words it must use.
  *
- * Those entries are ordered historically, so the first sense of "despite" is
- * the archaic noun "disdain" and of "manage" is "the act of managing". The
- * writer followed them faithfully and produced "the manage of the shop". This
- * runs inside generation rather than at lesson creation so the definition
- * calls hide behind the progress screen. Healing writes to the shared entry,
- * so a word is repaired once for every learner who has it.
+ * Raw dictionary entries are ordered historically, so the first sense of
+ * "despite" is the archaic noun "disdain" and of "manage" is "the act of
+ * managing". The writer followed them faithfully and produced "the manage of
+ * the shop". This runs inside generation rather than at lesson creation so the
+ * model calls hide behind the progress screen, and it writes to the shared
+ * entry, so a word is repaired once for every learner who has it.
  */
 async function healLegacySenses(
   env: LessonEnv,
@@ -207,14 +207,14 @@ async function healLegacySenses(
   normalized: string[],
 ) {
   const entries = await loadEntries(db, normalized)
-  const stale = normalized.filter((word) => needsBetterSenses(entries.get(word)))
-  if (stale.length === 0 || !isDeepSeekConfigured(env)) return entries
+  const stale = normalized.filter((word) => needsCard(entries.get(word)))
+  if (stale.length === 0) return entries
 
-  const config = readDeepSeekConfig(env)
   await Promise.all(
     stale.map(async (word) => {
       try {
-        const healed = await ensureEntry(db, word, config)
+        await fillEntry(env, db, word)
+        const healed = await loadEntry(db, word)
         if (healed) entries.set(word, healed)
       } catch (error) {
         // A stale gloss still beats failing the whole lesson.

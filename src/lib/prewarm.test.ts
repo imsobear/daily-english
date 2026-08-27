@@ -32,12 +32,13 @@ describe('prewarmPlan', () => {
 
 describe('addTally', () => {
   it('sums the parts of a run', () => {
-    const one = { seen: 20, defined: 4, spoken: 20, failed: 1 }
+    const one = { seen: 20, defined: 4, spoken: 20, described: 3, failed: 1 }
     expect(addTally(EMPTY_TALLY, one)).toEqual(one)
     expect(addTally(one, one)).toEqual({
       seen: 40,
       defined: 8,
       spoken: 40,
+      described: 6,
       failed: 2,
     })
   })

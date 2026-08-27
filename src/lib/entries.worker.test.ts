@@ -1,98 +1,126 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getDb } from '#/db'
+import { getDb, getEnv } from '#/db'
 import { users } from '#/db/schema'
 import {
+  completeEntry,
   ensureEntry,
+  entryCollocations,
   entrySenses,
   loadEntries,
-  needsBetterSenses,
-  saveEntry,
+  loadEntry,
+  needsCard,
+  saveDictionary,
   stubEntry,
+  type WordCardEnv,
 } from '#/lib/entries'
+import type { Sense } from '#/lib/word-card'
 import { saveWordForUser } from '#/server/words'
 
-const sense = [{ partOfSpeech: 'verb', definition: 'to find something' }]
+const sense: Sense[] = [
+  { pos: 'verb', definition: 'to find something', zh: null, examples: [] },
+]
+
+const CARD = {
+  senses: [
+    {
+      pos: 'verb',
+      definition: 'to come across something',
+      example: 'She discovered a leak.',
+      zh: '发现',
+    },
+  ],
+  collocations: ['discover that'],
+  family: [],
+}
 
 function word() {
   return `w${crypto.randomUUID().slice(0, 8)}`
 }
 
+/** An env pointed at a model that is not really there. */
+function withModel(answer: unknown) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify(answer), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ),
+  )
+  return {
+    ...getEnv(),
+    WORKERS_AI_MOCK_URL: 'https://model.test/word-card',
+  } as unknown as WordCardEnv
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
 describe('the shared entry', () => {
   it('does not replace model senses with dictionary ones', async () => {
     const db = getDb()
     const headword = word()
-    await saveEntry(db, {
-      headword,
-      ipa: '/one/',
-      definitions: sense,
-      examples: ['first'],
-      senseSource: 'model',
-    })
+    await saveDictionary(db, headword, { headword, ipa: '/one/', senses: sense })
+    const env = withModel({ response: JSON.stringify(CARD) })
+    await completeEntry(env, db, headword)
 
-    await saveEntry(db, {
+    await saveDictionary(db, headword, {
       headword,
       ipa: '/two/',
-      definitions: [{ partOfSpeech: 'noun', definition: 'an archaic sense' }],
-      examples: ['second'],
-      senseSource: 'legacy',
+      senses: [
+        { pos: 'noun', definition: 'an archaic sense', zh: null, examples: [] },
+      ],
     })
 
-    const entries = await loadEntries(db, [headword])
-    expect(entrySenses(entries.get(headword))).toEqual(sense)
+    const entry = (await loadEntries(db, [headword])).get(headword)
+    expect(entrySenses(entry)[0].definition).toBe('to come across something')
+    expect(entry?.ipa).toBe('/one/')
   })
 
   it('upgrades dictionary senses when the model answers later', async () => {
     const db = getDb()
     const headword = word()
-    await saveEntry(db, {
-      headword,
-      ipa: null,
-      definitions: [{ partOfSpeech: 'noun', definition: 'an archaic sense' }],
-      examples: [],
-      senseSource: 'legacy',
-    })
+    await saveDictionary(db, headword, { headword, ipa: null, senses: sense })
+    expect(needsCard(await loadEntry(db, headword))).toBe(true)
 
-    await saveEntry(db, {
-      headword,
-      ipa: '/new/',
-      definitions: sense,
-      examples: [],
-      senseSource: 'model',
-    })
+    const env = withModel({ response: JSON.stringify(CARD) })
+    await completeEntry(env, db, headword)
 
-    const entry = (await loadEntries(db, [headword])).get(headword)
-    expect(entrySenses(entry)).toEqual(sense)
-    expect(needsBetterSenses(entry)).toBe(false)
+    const entry = await loadEntry(db, headword)
+    expect(entrySenses(entry)[0].zh).toBe('发现')
+    expect(entryCollocations(entry)).toEqual(['discover that'])
+    expect(needsCard(entry)).toBe(false)
+  })
+
+  it('leaves a nonsense answer with the senses it had', async () => {
+    const db = getDb()
+    const headword = word()
+    await saveDictionary(db, headword, { headword, ipa: null, senses: sense })
+
+    expect(
+      await completeEntry(withModel({ response: 'sorry, no' }), db, headword),
+    ).toBe(false)
+    expect(entrySenses(await loadEntry(db, headword))).toEqual(sense)
   })
 
   it('leaves a defined word alone rather than looking it up again', async () => {
     const db = getDb()
     const headword = word()
-    await saveEntry(db, {
-      headword,
-      ipa: null,
-      definitions: sense,
-      examples: [],
-      senseSource: 'model',
-    })
+    await saveDictionary(db, headword, { headword, ipa: null, senses: sense })
 
-    // A null config would make any real lookup return nothing, so getting the
-    // senses back proves nothing was fetched.
-    const entry = await ensureEntry(db, headword, null)
+    // Nothing is reachable, so getting the senses back proves no lookup ran.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 500 })))
+    const entry = await ensureEntry(db, headword)
     expect(entrySenses(entry)).toEqual(sense)
   })
 
   it('keeps a stub from wiping a word someone already defined', async () => {
     const db = getDb()
     const headword = word()
-    await saveEntry(db, {
-      headword,
-      ipa: null,
-      definitions: sense,
-      examples: [],
-      senseSource: 'model',
-    })
+    await saveDictionary(db, headword, { headword, ipa: null, senses: sense })
 
     const entry = await stubEntry(db, headword, headword)
     expect(entrySenses(entry)).toEqual(sense)
@@ -120,12 +148,10 @@ describe('saving a word someone else already has', () => {
   it('is defined the moment it is added', async () => {
     const db = getDb()
     const headword = word()
-    await saveEntry(db, {
+    await saveDictionary(db, headword, {
       headword,
       ipa: '/ʃeər/',
-      definitions: sense,
-      examples: ['an example'],
-      senseSource: 'model',
+      senses: sense,
     })
 
     const { word: card } = await saveWordForUser('sharer', {
@@ -133,7 +159,7 @@ describe('saving a word someone else already has', () => {
       source: 'manual',
     })
 
-    expect(card.definitions).toEqual(sense)
+    expect(card.senses).toEqual(sense)
     expect(card.ipa).toBe('/ʃeər/')
     expect(card.dictionaryMiss).toBe(false)
   })

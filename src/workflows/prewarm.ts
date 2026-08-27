@@ -7,6 +7,7 @@ import {
 import type { LessonEnv } from '#/lib/generate-lesson'
 import {
   addTally,
+  DESCRIBE_BUDGET,
   EMPTY_TALLY,
   prewarmBatch,
   prewarmPlan,
@@ -19,10 +20,12 @@ export type PrewarmWorkflowParams = {
   levels?: CefrLevel[]
   /** Set false to fill in definitions only and skip the TTS bill. */
   speak?: boolean
+  /** Cards to write this run. Defaults to a day of the free allowance. */
+  describe?: number
 }
 
 /**
- * Define and speak the vocabulary pool, one batch per step.
+ * Define, speak and describe the vocabulary pool, one batch per step.
  *
  * Triggered by hand rather than on a schedule — the pool changes when someone
  * rebuilds it, which is a decision, not an event:
@@ -30,7 +33,8 @@ export type PrewarmWorkflowParams = {
  *   pnpm exec wrangler workflows trigger vocabulary-prewarm
  *
  * Steps are the unit of resumption, and each batch skips words that are
- * already done, so an interrupted run costs nothing to repeat.
+ * already done, so an interrupted run costs nothing to repeat — and so does
+ * running it again tomorrow to spend another day of the card budget.
  */
 export class PrewarmWorkflow extends WorkflowEntrypoint<
   LessonEnv,
@@ -41,6 +45,7 @@ export class PrewarmWorkflow extends WorkflowEntrypoint<
       ? event.payload.levels.filter((level) => CEFR_LEVELS.includes(level))
       : [...CEFR_LEVELS]
     const speak = event.payload?.speak ?? true
+    let describeLeft = event.payload?.describe ?? DESCRIBE_BUDGET
 
     let total: PrewarmTally = EMPTY_TALLY
     let done = 0
@@ -52,9 +57,17 @@ export class PrewarmWorkflow extends WorkflowEntrypoint<
         // that needs a moment, and every finished word is skipped on the way
         // back through, so a retry is cheap.
         { retries: { limit: 3, delay: '15 seconds', backoff: 'exponential' } },
-        () => prewarmBatch(this.env, batch.words, { speak }),
+        () =>
+          prewarmBatch(this.env, batch.words, {
+            speak,
+            describeLimit: describeLeft,
+          }),
       )
       total = addTally(total, tally)
+      // Words already carded cost nothing, so the budget only moves when a
+      // card is actually written — a second run over a warm pool spends none
+      // of it and still reaches the words the first run stopped short of.
+      describeLeft -= tally.described
       done += 1
 
       /*

@@ -42,11 +42,10 @@ export const userSettings = sqliteTable('user_settings', {
  *
  * Pronunciation, senses and examples describe the language, not the learner,
  * so they live once rather than once per user. Defining a word costs a
- * dictionary fetch plus a model call, and speaking it costs TTS, so the
+ * dictionary fetch and a model call, and speaking it costs TTS, so the
  * hundredth learner to save "discover" should pay for none of it. Keying on
  * the normalized form also means a sense fixed for one learner is fixed for
- * all of them — the drift between copies is what `senseSource` exists to
- * repair.
+ * all of them.
  */
 export const dictionaryEntries = sqliteTable('dictionary_entries', {
   /** Lowercased, whitespace-collapsed headword. See `normalizeHeadword`. */
@@ -54,13 +53,26 @@ export const dictionaryEntries = sqliteTable('dictionary_entries', {
   /** Canonical spelling to display, as returned by the dictionary. */
   headword: text('headword').notNull(),
   ipa: text('ipa'),
-  definitions: text('definitions').notNull().default('[]'),
-  examples: text('examples').notNull().default('[]'),
-  /** 'model' once a frequency-ordered entry exists; 'legacy' needs redefining. */
-  senseSource: text('sense_source').notNull().default('legacy'),
+  /** `Sense[]` JSON: part of speech, definition, Chinese and examples. */
+  senses: text('senses').notNull().default('[]'),
+  /** `string[]` JSON — the phrases this word really appears in. */
+  collocations: text('collocations').notNull().default('[]'),
+  /** `WordRelative[]` JSON — same stem, different part of speech. */
+  family: text('family').notNull().default('[]'),
+  /** How good the senses are: 'pending', then 'dictionary', then 'model'. */
+  source: text('source').notNull().default('pending'),
   /** R2 object holding the spoken word, written on first play. */
   audioKey: text('audio_key'),
   updatedAt: text('updated_at').notNull(),
+
+  /*
+   * Replaced by the four columns above and dropped in the migration that
+   * follows this one, once the deployed Worker has stopped reading them.
+   */
+  definitions: text('definitions').notNull().default('[]'),
+  examples: text('examples').notNull().default('[]'),
+  senseSource: text('sense_source').notNull().default('legacy'),
+  detail: text('detail'),
 })
 
 export const words = sqliteTable(

@@ -22,6 +22,14 @@ DEEPSEEK_API_KEY=
 # OPENAI_API_KEY=
 # TTS_MOCK_URL=http://127.0.0.1:8799/tts
 
+# Word cards — the usage pattern, collocations and family under each word —
+# come from Workers AI, and only during the pre-warm pass. Locally, leave
+# WORKERS_AI_MOCK_URL pointed at `pnpm mock:ai`; in production the Worker needs
+# a token with Workers AI read access (the account id is a var already):
+#   pnpm exec wrangler secret put WORKERS_AI_API_TOKEN
+# WORKERS_AI_MOCK_URL=http://127.0.0.1:8799/word-card
+# WORKERS_AI_API_TOKEN=
+
 # Google OAuth client, for Gmail sign-in. Locally you can skip these and use
 # the "Sign in as the test learner" button, which only exists on the dev server.
 GOOGLE_CLIENT_ID=

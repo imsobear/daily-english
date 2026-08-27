@@ -24,5 +24,6 @@ Cloudflare Workers (D1, R2), live at
 | [Local development](docs/agents/local-dev.md) | Running the app, mock AI, ports, dev-server D1 |
 | [Testing](docs/agents/testing.md)             | Adding or running tests                        |
 | [Data and deploys](docs/agents/data-deploy.md) | Schema changes, migrations, shipping to prod  |
+| [How a word is built](docs/agents/word-data.md) | Where a word's senses, card and audio come from |
 | [UI conventions](docs/agents/ui.md)           | Building or restyling components               |
 | [TanStack skills](docs/agents/tanstack.md)    | Router or Start behaviour you would guess at   |

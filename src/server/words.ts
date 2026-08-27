@@ -3,22 +3,25 @@ import { and, asc, desc, eq } from 'drizzle-orm'
 
 import { getDb, getEnv, waitUntil } from '#/db'
 import { wordOffers, words } from '#/db/schema'
-import { normalizeHeadword, type DictionarySense } from '#/lib/dictionary'
+import { normalizeHeadword } from '#/lib/dictionary'
 import {
   ensureEntry,
-  entryExamples,
+  entryCollocations,
+  entryFamily,
   entrySenses,
+  fillEntry,
+  isDefined,
   loadEntries,
   loadEntry,
-  needsBetterSenses,
+  needsCard,
   stubEntry,
   type EntriesDb,
   type Entry,
 } from '#/lib/entries'
 import { TTS_VOICE } from '#/lib/ai'
-import { isDeepSeekConfigured, readDeepSeekConfig } from '#/lib/deepseek'
 import { requireUser } from '#/lib/session'
 import { pickRecommendations, type RecommendedWord } from '#/lib/vocabulary'
+import type { Sense, WordRelative } from '#/lib/word-card'
 import { readSettings, type Settings } from '#/server/settings'
 
 export type WordCard = {
@@ -26,8 +29,9 @@ export type WordCard = {
   headword: string
   ipa: string | null
   audioUrl: string
-  definitions: DictionarySense[]
-  examples: string[]
+  senses: Sense[]
+  collocations: string[]
+  family: WordRelative[]
   source: string
   createdAt: string
   dictionaryMiss: boolean
@@ -40,20 +44,11 @@ export type WordsPage = {
   settings: Settings
 }
 
-/**
- * DeepSeek is optional at runtime: without a key the app still works from
- * dictionary data alone, it just loses the better-ordered definitions.
- */
-function deepSeekConfig() {
-  const env = getEnv()
-  return isDeepSeekConfigured(env) ? readDeepSeekConfig(env) : null
-}
-
 function toCard(
   row: typeof words.$inferSelect,
   entry: Entry | undefined,
 ): WordCard {
-  const definitions = entrySenses(entry)
+  const senses = entrySenses(entry)
   return {
     id: row.id,
     headword: entry?.headword ?? row.headword,
@@ -61,11 +56,12 @@ function toCard(
     // Every word is speakable: the endpoint synthesises on first play, and
     // keys the clip by the word itself so it is spoken once for everyone.
     audioUrl: `/api/word-audio/${encodeURIComponent(row.normalized)}?v=${TTS_VOICE}`,
-    definitions,
-    examples: entryExamples(entry),
+    senses,
+    collocations: entryCollocations(entry),
+    family: entryFamily(entry),
     source: row.source,
     createdAt: row.createdAt,
-    dictionaryMiss: definitions.length === 0,
+    dictionaryMiss: senses.length === 0,
     familiarity: row.familiarity,
     dueAt: row.dueAt,
   }
@@ -190,14 +186,14 @@ export const getWord = createServerFn({ method: 'GET' })
   })
 
 /**
- * Define a word nobody has looked up yet.
+ * Fill in a word nobody has looked up yet, after the response has gone.
  *
- * Failure is survivable: the entry stays on `pending`, the learner sees the
- * word without its senses, and lesson generation defines it before it is ever
- * used in an article.
+ * Failure is survivable: the entry stays as it is, the learner sees the word
+ * without its senses, and both the pre-warm pass and the next visit to the
+ * word try again.
  */
 async function enrichWord(normalized: string) {
-  await ensureEntry(getDb(), normalized, deepSeekConfig())
+  await fillEntry(getEnv(), getDb(), normalized)
 }
 
 export async function saveWordForUser(
@@ -239,11 +235,11 @@ export async function saveWordForUser(
   const entry = await stubEntry(db, normalized, data.headword)
   await db.insert(words).values(row)
 
-  if (needsBetterSenses(entry)) {
+  if (needsCard(entry)) {
     /*
-     * The definition lookup is a dictionary fetch plus a model call — seconds,
-     * not milliseconds. Running it after the response keeps adding a word
-     * instant, which matters when filling a ten word lesson one tap at a time.
+     * A dictionary fetch and then half a minute of Workers AI. Running it
+     * after the response keeps adding a word instant, which matters when
+     * filling a ten word lesson one tap at a time.
      */
     waitUntil(
       enrichWord(normalized).catch((error: unknown) => {
@@ -306,7 +302,7 @@ export async function saveWordsForUser(
 
   // Starter sets are the same handful of catalog words for everyone, so after
   // the first learner passes through this is usually nothing to do.
-  const undefinedYet = entries.filter(needsBetterSenses)
+  const undefinedYet = entries.filter(needsCard)
   if (undefinedYet.length > 0) {
     waitUntil(
       Promise.allSettled(
@@ -349,9 +345,18 @@ export const refreshWord = createServerFn({ method: 'POST' })
     })
     if (!row) throw new Error('Word not found')
 
-    const entry = await ensureEntry(db, row.normalized, deepSeekConfig())
-    if (!entry || entrySenses(entry).length === 0) {
+    const entry = await ensureEntry(db, row.normalized, row.headword)
+    if (!isDefined(entry) || entrySenses(entry).length === 0) {
       throw new Error('Still no definition for this word')
+    }
+    // The senses above are the dictionary's if the model has not been round
+    // yet; ask it again for this word rather than waiting on the next pass.
+    if (needsCard(entry)) {
+      waitUntil(
+        enrichWord(row.normalized).catch((error: unknown) => {
+          console.error('Could not describe', row.normalized, error)
+        }),
+      )
     }
     return toCard(row, entry)
   })

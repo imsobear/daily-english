@@ -12,22 +12,21 @@ import {
   weave,
   type BrowseSource,
 } from '#/lib/browse'
-import { isDeepSeekConfigured, readDeepSeekConfig } from '#/lib/deepseek'
+import { normalizeHeadword } from '#/lib/dictionary'
 import {
-  normalizeHeadword,
-  type DictionarySense,
-} from '#/lib/dictionary'
-import {
-  ensureEntry,
-  entryExamples,
+  entryCollocations,
+  entryFamily,
   entrySenses,
+  fillEntry,
+  isDefined,
   loadEntries,
-  needsBetterSenses,
+  needsCard,
   type Entry,
 } from '#/lib/entries'
 import { requireUser } from '#/lib/session'
 import { CEFR_LEVELS, type CefrLevel } from '#/lib/settings'
 import { pickRecommendations, poolEntry } from '#/lib/vocabulary'
+import type { Sense, WordRelative } from '#/lib/word-card'
 import { readSettings } from '#/server/settings'
 
 export type BrowseCard = {
@@ -36,8 +35,9 @@ export type BrowseCard = {
   ipa: string | null
   audioUrl: string
   level: CefrLevel | null
-  definitions: DictionarySense[]
-  examples: string[]
+  senses: Sense[]
+  collocations: string[]
+  family: WordRelative[]
   /** Set when this is already one of the learner's words. */
   wordId: string | null
   familiarity: number | null
@@ -85,13 +85,15 @@ const PAGE = 12
  */
 const LEVEL_HINT_AT = 30
 
-/** New words defined per page, when the pre-warm pass has not reached them. */
+/**
+ * Words filled in per page, when the pre-warm pass has not reached them.
+ *
+ * Each one is a dictionary fetch and a Workers AI card, so this is also the
+ * ceiling on what an idle scroll can spend. The pass rations itself to a
+ * hundred cards a day and takes the pool in order; these six are the words
+ * somebody is actually looking at, so they jump the queue.
+ */
 const ENRICH_PER_PAGE = 6
-
-function deepSeekConfig() {
-  const env = getEnv()
-  return isDeepSeekConfigured(env) ? readDeepSeekConfig(env) : null
-}
 
 function audioUrl(normalized: string) {
   return `/api/word-audio/${encodeURIComponent(normalized)}?v=${TTS_VOICE}`
@@ -106,19 +108,20 @@ function cardOf(input: {
   familiarity?: number | null
   source?: string | null
 }): BrowseCard {
-  const definitions = entrySenses(input.entry)
+  const senses = entrySenses(input.entry)
   return {
     normalized: input.normalized,
     headword: input.entry?.headword ?? input.headword,
     ipa: input.entry?.ipa ?? null,
     audioUrl: audioUrl(input.normalized),
     level: input.level,
-    definitions,
-    examples: entryExamples(input.entry),
+    senses,
+    collocations: entryCollocations(input.entry),
+    family: entryFamily(input.entry),
     wordId: input.wordId ?? null,
     familiarity: input.familiarity ?? null,
     source: input.source ?? null,
-    pending: definitions.length === 0,
+    pending: senses.length === 0,
   }
 }
 
@@ -279,7 +282,7 @@ async function freshCards(userId: string, level: CefrLevel, wanted: number) {
     picks.map((pick) => normalizeHeadword(pick.headword)),
   )
   const ready = (pick: (typeof picks)[number]) =>
-    !needsBetterSenses(entries.get(normalizeHeadword(pick.headword)))
+    isDefined(entries.get(normalizeHeadword(pick.headword)))
 
   const chosen = [...picks.filter(ready), ...picks.filter((p) => !ready(p))].slice(
     0,
@@ -300,21 +303,21 @@ async function freshCards(userId: string, level: CefrLevel, wanted: number) {
   await recordShown(userId, normalized)
 
   /*
-   * Whatever is still undefined is looked up after the response: the ones on
-   * this page, so they are complete if the learner scrolls back, then the
+   * Whatever is still thin is filled in after the response: the ones on this
+   * page, so they are complete if the learner scrolls back, then the
    * candidates we passed over, so the next page has more to choose from. A
    * page of twelve is not worth holding behind a dozen model calls.
    */
   const missing = [...chosen, ...picks.filter((pick) => !shown.has(pick))]
-    .filter((pick) => !ready(pick))
+    .filter((pick) => needsCard(entries.get(normalizeHeadword(pick.headword))))
     .map((pick) => normalizeHeadword(pick.headword))
     .slice(0, ENRICH_PER_PAGE)
   if (missing.length > 0) {
-    const config = deepSeekConfig()
+    const env = getEnv()
     waitUntil(
       Promise.allSettled(
         missing.map((word) =>
-          ensureEntry(db, word, config).catch((error: unknown) => {
+          fillEntry(env, db, word).catch((error: unknown) => {
             console.error('Could not define', word, error)
           }),
         ),

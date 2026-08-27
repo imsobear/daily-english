@@ -1,19 +1,19 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, eq, inArray } from 'drizzle-orm'
 
-import { getDb, getEnv } from '#/db'
+import { getDb, getEnv, waitUntil } from '#/db'
 import { words } from '#/db/schema'
 import { normalizeHeadword } from '#/lib/dictionary'
 import {
   ensureEntry,
-  entryExamples,
   entrySenses,
+  fillEntry,
   isDefined,
   loadEntries,
+  needsCard,
   type EntriesDb,
 } from '#/lib/entries'
 import { TTS_VOICE } from '#/lib/ai'
-import { isDeepSeekConfigured, readDeepSeekConfig } from '#/lib/deepseek'
 import { requireUser } from '#/lib/session'
 import { baseFormCandidates } from '#/lib/text'
 
@@ -87,24 +87,31 @@ export const glossWord = createServerFn({ method: 'POST' })
     const headword = await dictionaryForm(db, user.id, data.headword)
 
     const [entry, owned] = await Promise.all([
-      ensureEntry(
-        db,
-        headword,
-        isDeepSeekConfigured(env) ? readDeepSeekConfig(env) : null,
-      ),
+      ensureEntry(db, headword),
       db.query.words.findFirst({
         where: and(eq(words.userId, user.id), eq(words.normalized, headword)),
         columns: { id: true },
       }),
     ])
 
+    // The sheet needs a definition now, and the dictionary above has given it
+    // one. The card the model writes is for the next time this word is met —
+    // on the word page, or in the feed — so it is written after the response.
+    if (needsCard(entry)) {
+      waitUntil(
+        fillEntry(env, db, headword).catch((error: unknown) => {
+          console.error('Could not describe', headword, error)
+        }),
+      )
+    }
+
     const senses = entrySenses(entry)
     return {
       headword: entry?.headword ?? headword,
       ipa: entry?.ipa ?? null,
       definition: senses[0]?.definition ?? null,
-      partOfSpeech: senses[0]?.partOfSpeech ?? null,
-      example: entryExamples(entry)[0] ?? null,
+      partOfSpeech: senses[0]?.pos || null,
+      example: senses[0]?.examples[0] ?? null,
       saved: Boolean(owned),
       audioUrl: `/api/word-audio/${encodeURIComponent(headword)}?v=${TTS_VOICE}`,
     }
