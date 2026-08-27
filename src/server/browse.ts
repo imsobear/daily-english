@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { asc, eq } from 'drizzle-orm'
 
-import { getDb, getEnv, waitUntil } from '#/db'
+import { getDb, waitUntil } from '#/db'
 import { userSettings, wordOffers, words } from '#/db/schema'
 import { TTS_VOICE } from '#/lib/ai'
 import {
@@ -14,13 +14,13 @@ import {
 } from '#/lib/browse'
 import { normalizeHeadword } from '#/lib/dictionary'
 import {
+  ensureEntry,
   entryCollocations,
   entryFamily,
   entrySenses,
-  fillEntry,
   isDefined,
   loadEntries,
-  needsCard,
+  needsSenses,
   type Entry,
 } from '#/lib/entries'
 import { requireUser } from '#/lib/session'
@@ -86,12 +86,12 @@ const PAGE = 12
 const LEVEL_HINT_AT = 30
 
 /**
- * Words filled in per page, when the pre-warm pass has not reached them.
+ * Words looked up per page, when the nightly pass has not reached them.
  *
- * Each one is a dictionary fetch and a Workers AI card, so this is also the
- * ceiling on what an idle scroll can spend. The pass rations itself to a
- * hundred cards a day and takes the pool in order; these six are the words
- * somebody is actually looking at, so they jump the queue.
+ * A dictionary fetch each, which is the ceiling on what an idle scroll can
+ * spend on a stranger's server. The card the model writes is never fetched
+ * here — the pass does that, and until it has, the dictionary senses are what
+ * the feed shows.
  */
 const ENRICH_PER_PAGE = 6
 
@@ -303,21 +303,20 @@ async function freshCards(userId: string, level: CefrLevel, wanted: number) {
   await recordShown(userId, normalized)
 
   /*
-   * Whatever is still thin is filled in after the response: the ones on this
-   * page, so they are complete if the learner scrolls back, then the
+   * Whatever has no senses at all is looked up after the response: the ones on
+   * this page, so they read properly if the learner scrolls back, then the
    * candidates we passed over, so the next page has more to choose from. A
-   * page of twelve is not worth holding behind a dozen model calls.
+   * page of twelve is not worth holding behind a dozen dictionary fetches.
    */
   const missing = [...chosen, ...picks.filter((pick) => !shown.has(pick))]
-    .filter((pick) => needsCard(entries.get(normalizeHeadword(pick.headword))))
+    .filter((pick) => needsSenses(entries.get(normalizeHeadword(pick.headword))))
     .map((pick) => normalizeHeadword(pick.headword))
     .slice(0, ENRICH_PER_PAGE)
   if (missing.length > 0) {
-    const env = getEnv()
     waitUntil(
       Promise.allSettled(
         missing.map((word) =>
-          fillEntry(env, db, word).catch((error: unknown) => {
+          ensureEntry(db, word).catch((error: unknown) => {
             console.error('Could not define', word, error)
           }),
         ),

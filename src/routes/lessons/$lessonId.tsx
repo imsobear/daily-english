@@ -777,11 +777,6 @@ function LessonPage() {
 
       <GlossSheet
         headword={tapped?.word ?? null}
-        sentence={
-          tapped && tapped.sentence >= 0
-            ? (article.sentences[tapped.sentence] ?? null)
-            : null
-        }
         // Only offered where there is audio to seek into, which rules out the
         // articles whose voice budget ran out.
         onPlaySentence={

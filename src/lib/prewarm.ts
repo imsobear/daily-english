@@ -1,8 +1,8 @@
 import { drizzle } from 'drizzle-orm/d1'
-import { eq } from 'drizzle-orm'
+import { asc, eq, ne } from 'drizzle-orm'
 
 import * as schema from '#/db/schema'
-import { dictionaryEntries } from '#/db/schema'
+import { dictionaryEntries, words } from '#/db/schema'
 import {
   readOpenAiApiKey,
   readTtsMockUrl,
@@ -11,7 +11,6 @@ import {
 } from '#/lib/ai'
 import { normalizeHeadword } from '#/lib/dictionary'
 import {
-  completeEntry,
   ensureEntry,
   ensureIpa,
   isDefined,
@@ -22,22 +21,22 @@ import {
 } from '#/lib/entries'
 import type { LessonEnv } from '#/lib/generate-lesson'
 import { CEFR_LEVELS, type CefrLevel } from '#/lib/settings'
-import { poolLevel } from '#/lib/vocabulary'
+import { poolEntry, poolLevel } from '#/lib/vocabulary'
+import { describeWordTwice, readWorkersAi } from '#/lib/word-card'
 
 /**
- * Define, speak and describe the whole vocabulary pool, ahead of anyone asking.
+ * Define, speak and describe words, ahead of anyone asking.
  *
- * The Explore feed shows words nobody in the app has necessarily met before,
- * and defining one costs a dictionary fetch, speaking it costs TTS, and
- * writing its card costs half a minute of a large model. Done on demand, every
- * card in a fresh feed would arrive blank and silent. The pool is fixed and
- * shared by every learner, so doing it once ahead of time buys a feed that
- * never waits again.
+ * This is the only thing in the app that calls the model that writes cards. A
+ * card is half a minute of a large model and a share of a daily allowance, so
+ * asking for one while somebody waits would be slow at best and rationed at
+ * worst; here a slow answer costs nobody anything and the budget is spent on
+ * purpose. Requests fetch the dictionary and leave it at that.
  *
  * Everything here is skip-if-present, which makes the pass resumable: run it
- * again after adding words to the pool and it only does the new ones. That is
- * also what lets the cards be rationed — a run stops describing when it hits
- * its budget, and tomorrow's run picks up exactly where it left off.
+ * again after adding words and it only does the new ones. That is also what
+ * lets the cards be rationed — a run stops describing when it hits its budget,
+ * and tomorrow's run picks up exactly where it left off.
  */
 export type PrewarmTally = {
   seen: number
@@ -72,33 +71,52 @@ export function addTally(a: PrewarmTally, b: PrewarmTally): PrewarmTally {
 export const PREWARM_BATCH = 20
 
 /**
- * Cards per run, sized to the free Workers AI allowance.
+ * Cards per run, sized to a night's share of the free Workers AI allowance.
  *
- * Workers AI gives away 10,000 Neurons a day, and one card off gpt-oss-120b
- * costs somewhere near ninety of them once the model has finished thinking —
- * a hundred words is most of a day and none of a bill. The pool is thousands
- * of words, so the pass is meant to be run again tomorrow rather than turned
- * up: it skips whatever is already carded, and the words a learner actually
- * meets get theirs from `waitUntil` long before the pass arrives.
+ * Workers AI gives away 10,000 Neurons a day and one card off gpt-oss-120b
+ * costs somewhere near seventy-five of them, counting the answers thrown away
+ * for having no Chinese in them. That is about 130 cards; a hundred leaves room
+ * for the retries and for anything else on the account.
+ *
+ * The cron in `src/worker.ts` spends this every night, and the pass skips
+ * whatever is already carded, so words fill a hundred at a time without anyone
+ * deciding to do it.
  */
 export const DESCRIBE_BUDGET = 100
+
+/**
+ * Saved words considered per run, a few times the card budget so that the
+ * words behind today's hundred are already queued for tomorrow.
+ */
+const DEMANDED_LIMIT = 500
 
 /** In-flight lookups inside one batch, to stay polite to both providers. */
 const CONCURRENCY = 4
 
-export function prewarmPlan(levels: CefrLevel[] = [...CEFR_LEVELS]) {
-  return levels.flatMap((level) => {
-    const words = poolLevel(level).map((word) => word.headword)
-    const batches: { level: CefrLevel; offset: number; words: string[] }[] = []
-    for (let offset = 0; offset < words.length; offset += PREWARM_BATCH) {
-      batches.push({
-        level,
-        offset,
-        words: words.slice(offset, offset + PREWARM_BATCH),
-      })
-    }
-    return batches
-  })
+/** One workflow step's worth of words. `level` only names the step. */
+export type PrewarmBatch = { level: string; offset: number; words: string[] }
+
+function batched(level: string, headwords: string[]): PrewarmBatch[] {
+  const batches: PrewarmBatch[] = []
+  for (let offset = 0; offset < headwords.length; offset += PREWARM_BATCH) {
+    batches.push({
+      level,
+      offset,
+      words: headwords.slice(offset, offset + PREWARM_BATCH),
+    })
+  }
+  return batches
+}
+
+export function prewarmPlan(
+  levels: CefrLevel[] = [...CEFR_LEVELS],
+): PrewarmBatch[] {
+  return levels.flatMap((level) =>
+    batched(
+      level,
+      poolLevel(level).map((word) => word.headword),
+    ),
+  )
 }
 
 async function inBatches<T>(items: T[], run: (item: T) => Promise<void>) {
@@ -109,6 +127,81 @@ async function inBatches<T>(items: T[], run: (item: T) => Promise<void>) {
 
 function audioKeyFor(normalized: string) {
   return `word-audio/${TTS_VOICE}/${normalized}.mp3`
+}
+
+/**
+ * The level to pitch a card at.
+ *
+ * Words the pool has never carried are the ones a learner typed in themselves,
+ * and B1 is the middle of the range rather than a guess about them.
+ */
+function levelOf(normalized: string): CefrLevel {
+  return poolEntry(normalized)?.level ?? 'B1'
+}
+
+/**
+ * Give one word the card the model writes: senses in frequency order, each
+ * with its Chinese and an example, plus collocations and family.
+ *
+ * Returns false when nothing usable came back, which leaves the dictionary
+ * senses in place and the word eligible for the next run.
+ */
+export async function describeEntry(
+  env: LessonEnv,
+  db: EntriesDb,
+  normalized: string,
+  headword?: string,
+) {
+  const card = await describeWordTwice({
+    headword: headword ?? normalized,
+    level: levelOf(normalized),
+    ...readWorkersAi(env),
+  })
+  if (!card) return false
+
+  await db
+    .update(dictionaryEntries)
+    .set({
+      senses: JSON.stringify(card.senses),
+      collocations: JSON.stringify(card.collocations),
+      family: JSON.stringify(card.family),
+      source: 'model',
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(dictionaryEntries.normalized, normalized))
+  return true
+}
+
+/**
+ * The words learners have saved and the model has not described yet.
+ *
+ * These go before the pool, because a word somebody typed in or tapped out of
+ * an article is a word they chose, and it may not be in the pool at all —
+ * which, now that nothing describes a word on demand, would leave it holding
+ * dictionary senses for good. Oldest first, so a word cannot be pushed down
+ * the list forever by newer ones.
+ */
+export async function demandedWords(db: EntriesDb, limit = DEMANDED_LIMIT) {
+  const rows = await db
+    .selectDistinct({
+      normalized: words.normalized,
+      createdAt: words.createdAt,
+    })
+    .from(words)
+    .innerJoin(
+      dictionaryEntries,
+      eq(dictionaryEntries.normalized, words.normalized),
+    )
+    .where(ne(dictionaryEntries.source, 'model'))
+    .orderBy(asc(words.createdAt))
+    .limit(limit)
+  return rows.map((row) => row.normalized)
+}
+
+/** The saved words, as steps for the workflow to walk. */
+export async function demandedPlan(env: LessonEnv): Promise<PrewarmBatch[]> {
+  const db = drizzle(env.DB, { schema }) as EntriesDb
+  return batched('saved', await demandedWords(db))
 }
 
 /**
@@ -161,7 +254,7 @@ export async function prewarmBatch(
     if (needsCard(entry) && describeLeft > 0) {
       describeLeft -= 1
       try {
-        const written = await completeEntry(env, db, word, entry?.headword)
+        const written = await describeEntry(env, db, word, entry?.headword)
         if (written) tally.described += 1
       } catch (error) {
         tally.failed += 1

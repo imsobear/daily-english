@@ -45,11 +45,16 @@
       "class_name": "LessonWorkflow"
     },
     {
-      // Run by hand after the vocabulary pool changes:
+      // Nightly by cron, and by hand after the vocabulary pool changes:
       //   pnpm exec wrangler workflows trigger vocabulary-prewarm
       "name": "vocabulary-prewarm",
       "binding": "PREWARM_WORKFLOW",
       "class_name": "PrewarmWorkflow"
     }
-  ]
+  ],
+  "triggers": {
+    // 00:10 UTC: ten minutes after the Workers AI allowance resets for the
+    // day. See the `scheduled` handler in src/worker.ts.
+    "crons": ["10 0 * * *"]
+  }
 }

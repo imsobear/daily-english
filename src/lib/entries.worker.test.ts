@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDb, getEnv } from '#/db'
 import { users } from '#/db/schema'
 import {
-  completeEntry,
   ensureEntry,
   entryCollocations,
   entrySenses,
@@ -12,8 +11,8 @@ import {
   needsCard,
   saveDictionary,
   stubEntry,
-  type WordCardEnv,
 } from '#/lib/entries'
+import { describeEntry } from '#/lib/prewarm'
 import type { Sense } from '#/lib/word-card'
 import { saveWordForUser } from '#/server/words'
 
@@ -52,7 +51,7 @@ function withModel(answer: unknown) {
   return {
     ...getEnv(),
     WORKERS_AI_MOCK_URL: 'https://model.test/word-card',
-  } as unknown as WordCardEnv
+  } as unknown as Parameters<typeof describeEntry>[0]
 }
 
 afterEach(() => {
@@ -65,7 +64,7 @@ describe('the shared entry', () => {
     const headword = word()
     await saveDictionary(db, headword, { headword, ipa: '/one/', senses: sense })
     const env = withModel({ response: JSON.stringify(CARD) })
-    await completeEntry(env, db, headword)
+    await describeEntry(env, db, headword)
 
     await saveDictionary(db, headword, {
       headword,
@@ -87,7 +86,7 @@ describe('the shared entry', () => {
     expect(needsCard(await loadEntry(db, headword))).toBe(true)
 
     const env = withModel({ response: JSON.stringify(CARD) })
-    await completeEntry(env, db, headword)
+    await describeEntry(env, db, headword)
 
     const entry = await loadEntry(db, headword)
     expect(entrySenses(entry)[0].zh).toBe('发现')
@@ -101,7 +100,7 @@ describe('the shared entry', () => {
     await saveDictionary(db, headword, { headword, ipa: null, senses: sense })
 
     expect(
-      await completeEntry(withModel({ response: 'sorry, no' }), db, headword),
+      await describeEntry(withModel({ response: 'sorry, no' }), db, headword),
     ).toBe(false)
     expect(entrySenses(await loadEntry(db, headword))).toEqual(sense)
   })

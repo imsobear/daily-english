@@ -4,15 +4,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import * as schema from '#/db/schema'
 import { dictionaryEntries } from '#/db/schema'
 import { lookupDictionary, type DictionaryHit } from '#/lib/dictionary'
-import type { CefrLevel } from '#/lib/settings'
-import { poolEntry } from '#/lib/vocabulary'
-import {
-  describeWordTwice,
-  readList,
-  readWorkersAi,
-  type Sense,
-  type WordRelative,
-} from '#/lib/word-card'
+import { readList, type Sense, type WordRelative } from '#/lib/word-card'
 
 /**
  * The shared word store.
@@ -42,6 +34,11 @@ export const PENDING = 'pending'
 /** Whether there is anything to show a learner yet. */
 export function isDefined(entry: Entry | undefined): entry is Entry {
   return Boolean(entry && entry.source !== PENDING)
+}
+
+/** Whether the dictionary still owes this word its first senses. */
+export function needsSenses(entry: Entry | undefined) {
+  return !entry || entry.source === PENDING
 }
 
 /** Whether the model still owes this word a card. */
@@ -79,16 +76,6 @@ export function entryFamily(entry: Entry | undefined) {
 /** Every example the entry has, for the prompts that seed an article. */
 export function entryExamples(entry: Entry | undefined) {
   return entrySenses(entry).flatMap((sense) => sense.examples)
-}
-
-/**
- * The level to pitch a card at.
- *
- * Words the pool has never carried are the ones a learner typed in themselves,
- * and B1 is the middle of the range rather than a guess about them.
- */
-export function levelOf(normalized: string): CefrLevel {
-  return poolEntry(normalized)?.level ?? 'B1'
 }
 
 /** Read many entries at once, so a word list costs one extra query. */
@@ -197,8 +184,9 @@ export async function saveDictionary(
  * One path for every way a word arrives — saved from the list, tapped in an
  * article, dealt by the Explore feed. Read what we have; if it is only a
  * reservation, spend up to three seconds on the free dictionary so the screen
- * has something on it. What is missing after that is the model's job, and the
- * caller hands `completeEntry` to `waitUntil` rather than waiting for it.
+ * has something on it. Nothing here calls the model: a card takes half a
+ * minute to write, and the nightly pass writes them where a slow answer costs
+ * nobody anything.
  */
 export async function ensureEntry(
   db: EntriesDb,
@@ -242,63 +230,4 @@ export async function ensureIpa(db: EntriesDb, normalized: string) {
       ),
     )
   return true
-}
-
-export type WordCardEnv = {
-  CLOUDFLARE_ACCOUNT_ID?: string
-  WORKERS_AI_API_TOKEN?: string
-  WORKERS_AI_MOCK_URL?: string
-}
-
-/**
- * Give one word the card the model writes: senses in frequency order, each
- * with its Chinese and an example, plus collocations and family.
- *
- * Half a minute of a large model, so no request ever waits on it — the pass
- * does it ahead of time and `waitUntil` does it for whatever the pass missed.
- * Returns false when nothing usable came back, which leaves the dictionary
- * senses in place and the word eligible for the next run.
- */
-export async function completeEntry(
-  env: WordCardEnv,
-  db: EntriesDb,
-  normalized: string,
-  headword?: string,
-) {
-  const card = await describeWordTwice({
-    headword: headword ?? normalized,
-    level: levelOf(normalized),
-    ...readWorkersAi(env),
-  })
-  if (!card) return false
-
-  await db
-    .update(dictionaryEntries)
-    .set({
-      senses: JSON.stringify(card.senses),
-      collocations: JSON.stringify(card.collocations),
-      family: JSON.stringify(card.family),
-      source: 'model',
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(dictionaryEntries.normalized, normalized))
-  return true
-}
-
-/**
- * Everything one word needs, in the order a learner notices it missing.
- *
- * Handed to `waitUntil` by whichever request first met the word, so it runs
- * after the response and its cost is bounded by how many new words a person
- * can meet in a day.
- */
-export async function fillEntry(
-  env: WordCardEnv,
-  db: EntriesDb,
-  normalized: string,
-  headword?: string,
-) {
-  const entry = await ensureEntry(db, normalized, headword)
-  if (!needsCard(entry)) return
-  await completeEntry(env, db, normalized, entry?.headword ?? headword)
 }

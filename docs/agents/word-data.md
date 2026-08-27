@@ -41,12 +41,13 @@ both exist: a learner who typed "Risk" still sees the canonical form.
 **`ipa`** — `/ɹɪsk/` — is the pronunciation printed under the headword. It is
 display only; the speaker button does not use it.
 
-**`senses`** is the word. Both the feed card and the word page render it one box
-per sense, `zh` is what the 中文 button reveals under each definition, and
-`examples` is a list so a sense can grow a second sentence without a migration.
-It is also what everything else reads a single line out of: the article glossary
-and the quiz take the first sense and its first example, and an empty list is
-what puts "Looking this one up…" on a feed card.
+**`senses`** is the word. The feed card, the word page and the sheet that opens
+on a tapped word all render it the same way — one box per sense, up to three,
+`zh` behind the 中文 button, the first example in italics underneath — so a word
+looks the same wherever it is met. `examples` is a list so a sense can grow a
+second sentence without a migration. The quiz reads a single line out of it, the
+first sense and its first example, and an empty list is what puts "Looking this
+one up…" on a feed card.
 
 **`collocations`** is the "Goes with" row of chips on the word page and
 **`family`** is "Same family" below it. Neither appears on the feed card — a
@@ -55,8 +56,9 @@ card is glanced at, and the definitions want that second to themselves.
 **`source`** is a ladder of three values that nothing displays: `pending` for a
 row reserved when a word was saved, `dictionary` for senses good enough to show
 while something better is written, `model` for the card. Nothing moves back
-down, and `needsCard` — true for anything below `model` — is the one predicate
-every caller checks.
+down, and two predicates read it: request paths ask `needsSenses` — is there
+anything at all to show — and the nightly pass asks `needsCard` — is this still
+below `model`.
 
 **`audio_key`** — `word-audio/marin/risk.mp3` — points at the clip in R2. The
 voice is part of the path on purpose: changing `TTS_VOICE` changes the key, the
@@ -80,84 +82,75 @@ outright. DeepSeek now writes articles and nothing else.
 
 ## One flow
 
-Every way a word arrives runs the same three steps, in `src/lib/entries.ts`:
+Every way a word arrives — saved from the list, tapped in an article, dealt by
+the Explore feed, looked up again from its own page — runs `ensureEntry` in
+`src/lib/entries.ts`, which reads the shared row and, only if there is nothing
+to show, spends up to three seconds on the dictionary.
 
-1. **Read** the entry. Anything at `model` is finished, and that is the common
-   case — the whole point of a shared table.
-2. **Fetch and insert** if there is nothing to show. Up to three seconds on the
-   dictionary, which is short because a learner is waiting on it.
-3. **Complete in the background.** `fillEntry` in `waitUntil` writes the card
-   after the response has gone.
+There is no second step. Nothing a request touches calls the model: a card is
+half a minute of it and a share of a daily allowance, so the nightly pass writes
+every one of them, and until it reaches a word the dictionary senses are what
+the app shows. Lessons are the same — `fillMissingSenses` looks up a word with
+no senses and takes whatever ordering it gets.
 
-| What the learner does     | What runs                             | When                   |
-| ------------------------- | ------------------------------------- | ---------------------- |
-| Saves a word              | `stubEntry`, so the list has a row    | In the request         |
-| — and then                | `fillEntry`                           | After the response     |
-| Taps a word in an article | `ensureEntry`, then `fillEntry`       | Request, then after    |
-| Scrolls the Explore feed  | `fillEntry` for up to six pool words  | After the response     |
-| Opens a word page         | Nothing                               | —                      |
-| Taps "Look up again"      | `ensureEntry`, then `fillEntry`       | Request, then after    |
-| Plays a word              | TTS, then `audio_key`                 | In the request         |
-| Starts a lesson           | `healLegacySenses` over its words     | In the lesson workflow |
-
-Saving is split deliberately: the stub row is written before the response so the
-word appears instantly, and the lookup runs afterwards. Tapping a word in an
-article is the one lookup a learner waits on, and it usually costs a single
-read, because every word in an article was either seeded from someone's list or
-looked up by whoever tapped it first.
+What differs between the doors is only whether the learner waits. Saving writes
+a stub row in the request so the word appears instantly and looks it up after
+the response; a feed page looks up its first six new words afterwards too.
+Tapping a word in an article is the one lookup anybody waits on, and it usually
+costs a single read, because every word in an article was either seeded from
+someone's list or looked up by whoever tapped it first.
 
 ## Ahead of time
 
-The Explore feed deals words nobody has necessarily met, so waiting for the
-model there would mean a screen of blank cards. The pre-warm pass fills the pool
-in `src/data/vocabulary.ts` before anyone asks:
+The pass in `src/lib/prewarm.ts` writes every card there is, nightly on a cron
+and by hand when a word should not wait. It walks two lists in this order:
 
-```bash
-pnpm exec wrangler workflows trigger vocabulary-prewarm
-```
+1. **Saved words** — `demandedWords`, up to five hundred, oldest first. Somebody
+   chose these, and a word typed in by hand is not in the pool, so nothing else
+   would ever card it.
+2. **The pool** — `src/data/vocabulary.ts`, level by level, so the Explore feed
+   deals words that already read properly.
 
 Three phases per batch of twenty — define, speak, describe — each skipping words
-that already have that piece, which makes a repeat run nearly free.
+that already have that piece, which makes a repeat run nearly free. The nightly
+run skips speaking, and describes only until its budget runs out; the schedule,
+the budget and what they cost are in
+[data and deploys](data-deploy.md#warming-words).
 
-The describe phase is rationed. Workers AI gives away 10,000 Neurons a day and a
-card costs roughly ninety of them, so a run writes `DESCRIBE_BUDGET` — a hundred
-— cards and stops, leaving the rest for tomorrow. Run it again the next day and
-it picks up exactly where it left off, because a carded word is skipped and the
-budget only moves when a card is actually written. Pass `{"describe": 500}` to
-the trigger to spend past the free allowance deliberately; a thousand cards is
-about a dollar. See [data and deploys](data-deploy.md) for the rest of the cost
-picture.
-
-## What stops it all happening twice
-
-`source` is a ladder and `saveDictionary` will not write over `model` — its
-conflict update carries `where source != 'model'` — so a lookup arriving late
-cannot replace a card with a stopgap. Once a word reaches `model` it is read and
-returned, which is why the six background fills a feed page queues are almost
-always six reads.
+Nothing is written twice. `source` is a ladder and `saveDictionary` will not
+write over `model` — its conflict update carries `where source != 'model'` — so
+a lookup arriving late cannot replace a card with a stopgap.
 
 ## Rough edges
 
 These are known and unfixed, listed so nobody rediscovers them the hard way.
 
-**Nothing triggers the pass.** There is no cron trigger, and although
-`PREWARM_WORKFLOW` is bound in `wrangler.jsonc`, no code in `src/` creates an
-instance. Words added by `pnpm vocab` stay blank until a human runs the command
-— and now that a run stops at a hundred cards, the pool wants a run a day for a
-while rather than one long afternoon.
+**A new word waits a night for its card.** Until the pass reaches it, a word has
+dictionary senses: historical ordering, no Chinese, no collocations. That is
+what a learner sees, and what the article writer is given — the ordering that
+once produced "the manage of the shop". "Look up again" does not shorten the
+wait; it refetches the dictionary. Triggering the pass by hand does. This is the
+trade for never making anyone wait half a minute and never spending the
+allowance by accident.
+
+**The pool is never spoken by itself.** The cron passes `speak: false`, so a
+pool word has no audio until somebody plays it or a human triggers the pass by
+hand. That is a dollar of TTS deferred, not saved.
 
 **A card is written once and never revisited.** Improving the prompt does
 nothing for words already described, and a card whose Chinese was rejected by
 the parsing looks identical to a good one afterwards. `describeWordTwice`
 retries within a single call and that is the whole of the second chance.
 
-**A pending card in the feed never resolves on its own.** The fill that would
+**A pending card in the feed never resolves on its own.** The lookup that would
 fix it runs after the response, but the client neither polls nor invalidates, so
 "Looking this one up…" stays on screen until the learner loads another page.
 
-**The dictionary API is a single point of failure for IPA.** The model does not
-supply it reliably, so when `api.dictionaryapi.dev` is down or slow, words are
-saved without pronunciation and nothing goes back for it later.
+**The dictionary API is a single point of failure.** It is now the only thing
+a request can learn a word from, and the only source of IPA. When
+`api.dictionaryapi.dev` is down or slow a new word shows "Looking this one
+up…" until the pass reaches it; `ensureIpa` in the pass goes back for missing
+pronunciations, and nothing goes back for missing senses beyond the next run.
 
 **Old columns are still on the table.** `definitions`, `examples`,
 `sense_source` and `detail` are backfilled into the new shape by

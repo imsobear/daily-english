@@ -1,28 +1,32 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, eq, inArray } from 'drizzle-orm'
 
-import { getDb, getEnv, waitUntil } from '#/db'
+import { getDb } from '#/db'
 import { words } from '#/db/schema'
 import { normalizeHeadword } from '#/lib/dictionary'
 import {
   ensureEntry,
   entrySenses,
-  fillEntry,
   isDefined,
   loadEntries,
-  needsCard,
   type EntriesDb,
 } from '#/lib/entries'
 import { TTS_VOICE } from '#/lib/ai'
 import { requireUser } from '#/lib/session'
 import { baseFormCandidates } from '#/lib/text'
+import type { Sense } from '#/lib/word-card'
+
+/**
+ * The three senses a reader can take in without leaving the article, which is
+ * also what the Explore card shows — one word looks the same wherever it is
+ * met. Everything else a word has lives on its own page.
+ */
+const GLOSS_SENSES = 3
 
 export type Gloss = {
   headword: string
   ipa: string | null
-  definition: string | null
-  partOfSpeech: string | null
-  example: string | null
+  senses: Sense[]
   saved: boolean
   /** Synthesised on first play and keyed by the word, so it is spoken once. */
   audioUrl: string
@@ -82,7 +86,6 @@ export const glossWord = createServerFn({ method: 'POST' })
   .handler(async ({ data }): Promise<Gloss> => {
     const user = await requireUser()
     const db = getDb()
-    const env = getEnv()
 
     const headword = await dictionaryForm(db, user.id, data.headword)
 
@@ -94,24 +97,10 @@ export const glossWord = createServerFn({ method: 'POST' })
       }),
     ])
 
-    // The sheet needs a definition now, and the dictionary above has given it
-    // one. The card the model writes is for the next time this word is met —
-    // on the word page, or in the feed — so it is written after the response.
-    if (needsCard(entry)) {
-      waitUntil(
-        fillEntry(env, db, headword).catch((error: unknown) => {
-          console.error('Could not describe', headword, error)
-        }),
-      )
-    }
-
-    const senses = entrySenses(entry)
     return {
       headword: entry?.headword ?? headword,
       ipa: entry?.ipa ?? null,
-      definition: senses[0]?.definition ?? null,
-      partOfSpeech: senses[0]?.pos || null,
-      example: senses[0]?.examples[0] ?? null,
+      senses: entrySenses(entry).slice(0, GLOSS_SENSES),
       saved: Boolean(owned),
       audioUrl: `/api/word-audio/${encodeURIComponent(headword)}?v=${TTS_VOICE}`,
     }

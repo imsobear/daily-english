@@ -7,6 +7,7 @@ import {
 import type { LessonEnv } from '#/lib/generate-lesson'
 import {
   addTally,
+  demandedPlan,
   DESCRIBE_BUDGET,
   EMPTY_TALLY,
   prewarmBatch,
@@ -25,10 +26,12 @@ export type PrewarmWorkflowParams = {
 }
 
 /**
- * Define, speak and describe the vocabulary pool, one batch per step.
+ * Define, speak and describe words, one batch per step.
  *
- * Triggered by hand rather than on a schedule — the pool changes when someone
- * rebuilds it, which is a decision, not an event:
+ * A cron runs this nightly, and it is the only thing in the app that asks the
+ * model for a card, so it goes at the words learners have saved before the
+ * pool: those are words somebody chose, and some of them are not in the pool
+ * at all. Running it by hand does the same thing:
  *
  *   pnpm exec wrangler workflows trigger vocabulary-prewarm
  *
@@ -50,7 +53,11 @@ export class PrewarmWorkflow extends WorkflowEntrypoint<
     let total: PrewarmTally = EMPTY_TALLY
     let done = 0
 
-    for (const batch of prewarmPlan(levels)) {
+    // Saved words are read once, up front, so the rest of the run is the same
+    // list of steps whatever anyone saves while it is going.
+    const demanded = await step.do('saved-words', () => demandedPlan(this.env))
+
+    for (const batch of [...demanded, ...prewarmPlan(levels)]) {
       const tally = await step.do(
         `warm-${batch.level}-${batch.offset}`,
         // The failures worth repeating are a provider hiccup or a database
