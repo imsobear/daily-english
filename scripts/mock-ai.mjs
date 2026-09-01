@@ -150,8 +150,13 @@ createServer(async (req, res) => {
               {
                 pos: 'noun',
                 definition: `A mock definition of ${word}.`,
-                example: `The ${word} was hard to miss.`,
                 zh: '模拟词',
+                // Both have to contain the word, or the checks in
+                // parseWordCard drop them and the mock card arrives thin.
+                examples: [
+                  `The ${word} was hard to miss.`,
+                  `Everyone noticed the ${word} at once.`,
+                ],
               },
             ],
             collocations: [`a real ${word}`, `${word} of something`],

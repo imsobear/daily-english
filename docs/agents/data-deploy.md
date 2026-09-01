@@ -60,17 +60,21 @@ Everything it writes is shared by every learner, so it is paid once.
 order the words are taken.
 
 Cards are rationed apart from the rest. Measured on `@cf/openai/gpt-oss-120b`, a
-card is 415 tokens in and about 925 out, which is 76 Neurons; the free
-allocation of 10,000 a day covers about 130, and the rest bills at $0.011 per
-1,000. A run writes `DESCRIBE_BUDGET` — four hundred, about a quarter — and
-stops, and the next run picks up where it left off.
+card is about 800 tokens in and 1,250 out, which is roughly 110 Neurons; the
+free allocation of 10,000 a day covers about ninety, and the rest bills at
+$0.011 per 1,000. A run writes `DESCRIBE_BUDGET` — four hundred, some forty
+cents a night — and stops, and the next run picks up where it left off.
 
-Spending past the allowance is deliberate and self-limiting: only an uncarded
-word costs anything, so four hundred a night finishes the 4,600-word pool in a
-fortnight for a few dollars in total, after which a run finds only the words
-somebody saved that day and spends almost nothing. Drop the budget to 130 to
-stay inside the allowance, or pass `'{"describe":1000}'` to a manual trigger to
-go faster.
+Spending past the allowance is deliberate and self-limiting: only a word whose
+card is missing or out of date costs anything, so four hundred a night finishes
+the 4,600-word pool in a fortnight for a few dollars in total, after which a run
+finds only the words somebody saved that day and spends almost nothing. Drop the
+budget to 90 to stay inside the allowance, or pass `'{"describe":1000}'` to a
+manual trigger to go faster.
+
+Bumping `CARD_VERSION` in `src/lib/word-card.ts` puts the whole pool back in the
+queue, at the same budget and the same fortnight. That is the price of improving
+the prompt for words that already have a card, and it is the only way to pay it.
 
 The model is called over the REST API rather than through an `ai` binding. The
 binding has no local implementation, so declaring it makes the test pool open an
