@@ -199,7 +199,7 @@ and a rewrite of a word whose `dictionary_senses` are empty is postponed rather
 than done ungrounded — spending the call would lose the grounding and stamp the
 word as current.
 
-**Old columns are still on the table.** `definitions`, `examples`,
-`sense_source` and `detail` are backfilled into the new shape by
-`drizzle/0014_word_senses.sql` and read by nothing; they are dropped in a
-follow-up migration, once the Worker reading them is no longer deployed.
+**Nothing shortens the rewrite queue but time.** Bumping `CARD_VERSION` queues
+every carded word at once, and the budget is per night, so the last words in
+the pool wait a fortnight for a fix that shipped today. Saved words go first,
+which is the part that matters.
