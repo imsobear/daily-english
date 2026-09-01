@@ -1,0 +1,15 @@
+# Headers for the files Cloudflare serves without waking the Worker. Parsed at
+# deploy time, never served; paths are the ones in the client build output.
+#
+# Cloudflare's default for a static asset is `max-age=0, must-revalidate`, which
+# is the safe choice for a name that can change meaning. It is the wrong one for
+# a build asset: the name already contains a hash of the contents, so a changed
+# file is a changed URL, and every revalidation of the old one is a round trip
+# that can only ever answer 304.
+#
+# Nothing else is listed on purpose. An icon, the manifest and `sw.js` all keep
+# their names across a deploy, and `sw.js` in particular is how a stale app
+# learns there is a new one — a service worker nobody revalidates is a version
+# of the site that never ends.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
