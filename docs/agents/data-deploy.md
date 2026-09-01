@@ -62,19 +62,20 @@ order the words are taken.
 Cards are rationed apart from the rest. Measured on `@cf/openai/gpt-oss-120b`, a
 card is about 800 tokens in and 1,250 out, which is roughly 110 Neurons; the
 free allocation of 10,000 a day covers about ninety, and the rest bills at
-$0.011 per 1,000. A run writes `DESCRIBE_BUDGET` — four hundred, some forty
-cents a night — and stops, and the next run picks up where it left off.
+$0.011 per 1,000. A run writes `DESCRIBE_BUDGET` — two thousand, some two
+dollars and three and a half hours — and stops, and the next run picks up where
+it left off.
 
-Spending past the allowance is deliberate and self-limiting: only a word whose
-card is missing or out of date costs anything, so four hundred a night finishes
-the 4,600-word pool in a fortnight for a few dollars in total, after which a run
-finds only the words somebody saved that day and spends almost nothing. Drop the
-budget to 90 to stay inside the allowance, or pass `'{"describe":1000}'` to a
-manual trigger to go faster.
+Past the allowance the account is simply billed; nothing fails. That is worth
+knowing because it is not true on the Workers Free plan, where the ninety-first
+card of the day returns a 429 and error 3036 until 00:00 UTC. Only a word whose
+card is missing or behind `CARD_VERSION` costs anything, so a run over a warm
+pool is free, and the whole 4,600-word pool is about five dollars however fast
+it is taken.
 
-Bumping `CARD_VERSION` in `src/lib/word-card.ts` puts the whole pool back in the
-queue, at the same budget and the same fortnight. That is the price of improving
-the prompt for words that already have a card, and it is the only way to pay it.
+The budget is therefore a guard rather than a ration: uncapped, anything that
+marked every word stale by accident would rewrite the pool nightly. Pass
+`'{"describe":5000}'` to a manual trigger to ignore it for one run.
 
 The model is called over the REST API rather than through an `ai` binding. The
 binding has no local implementation, so declaring it makes the test pool open an

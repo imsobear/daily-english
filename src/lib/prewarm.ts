@@ -76,25 +76,25 @@ export function addTally(a: PrewarmTally, b: PrewarmTally): PrewarmTally {
 export const PREWARM_BATCH = 20
 
 /**
- * Cards per run, sized to finish the pool rather than to stay free.
+ * Cards per run. A guard against a mistake, not a budget to spend.
  *
  * A card measures about 800 tokens in and 1,250 out, which at gpt-oss-120b's
  * rate is roughly 110 Neurons; the free allocation of 10,000 a day is therefore
- * about ninety cards, and everything past it bills at $0.011 per 1,000. Four
- * hundred is some forty cents a night.
+ * about ninety cards, and everything past it bills at $0.011 per 1,000 on the
+ * Workers Paid plan. Two thousand is some two dollars, and around three and a
+ * half hours at four words at a time.
  *
- * That is a fee with an end date. Only a word whose card is missing or behind
- * the current recipe costs anything — the pass skips the rest — so four hundred
- * a night clears the pool in a fortnight for a few dollars all told, after
- * which the nightly run finds a handful of newly saved words and spends nearly
- * nothing. Drop this back to 90 to stay inside the allowance and take a couple
- * of months instead.
+ * The whole pool is only five dollars, so the pace was never really about the
+ * money: only a word whose card is missing or behind the current recipe costs
+ * anything, and a run over a warm pool spends nothing at all. What this number
+ * is really for is the day something marks every word stale by accident —
+ * uncapped, that is the pool rewritten nightly and a bill to find out by.
  */
-export const DESCRIBE_BUDGET = 400
+export const DESCRIBE_BUDGET = 2000
 
 /**
- * Saved words considered per run, a few times the card budget so that the
- * words behind today's hundred are already queued for tomorrow.
+ * Saved words considered per run. Everyone's lists together come to a couple
+ * of hundred, so this is a ceiling on a query rather than a real ration.
  */
 const DEMANDED_LIMIT = 500
 
