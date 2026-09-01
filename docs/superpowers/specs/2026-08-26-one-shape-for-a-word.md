@@ -85,11 +85,9 @@ Everything below is built except the last line.
 - `src/server/lessons.ts`, `src/lib/generate-lesson.ts` — read the one accessor
 - `src/routes/_app/explore.tsx`, `words/$wordId.tsx` — the fallback fork is gone
 - `scripts/mock-ai.mjs`, the test suites, `docs/agents/word-data.md`, `data-deploy.md`
-- **Still to come:** the migration dropping `definitions`, `examples`, `detail`
-  and `sense_source`. `drizzle/0015_card_version.sql` took the number while
-  adding `dictionary_senses` and `card_version`; the code stopped reading the
-  legacy four in the same pull request, so the drop is a follow-up whenever the
-  Worker reading them is no longer deployed.
+- `drizzle/0016_drop_word_legacy.sql` — the destructive half, a fortnight later
+  than planned. `0015` went to `dictionary_senses` and `card_version`, which
+  also took the code's last reads of the legacy four with it.
 
 ## What changed a day later
 
