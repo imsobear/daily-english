@@ -21,7 +21,7 @@ export type PrewarmWorkflowParams = {
   levels?: CefrLevel[]
   /** Set false to fill in definitions only and skip the TTS bill. */
   speak?: boolean
-  /** Cards to write this run. Defaults to a day of the free allowance. */
+  /** Cards to write this run. Defaults to `DESCRIBE_BUDGET`. */
   describe?: number
 }
 

@@ -180,10 +180,11 @@ hand. That is a dollar of TTS deferred, not saved.
 
 **A better prompt costs the pool over again.** Bumping `CARD_VERSION` queues
 every carded word for a rewrite, which is the point of it, but the rewrite is a
-model call per word at the nightly budget — a fortnight and a few dollars for
-the whole pool. Words keep the card they have on screen until a better one
-lands, so the cost is the only thing to think about; there is no way to fix a
-prompt for the words it was wrong about without paying for them again.
+model call per word: about five dollars and, at the nightly budget of two
+thousand, three nights. Saved words go first and every word keeps the card it
+has until a better one lands, so it is a cost rather than an outage — but there
+is no way to fix a prompt for the words it was already wrong about without
+paying for them again.
 
 **A pending card in the feed never resolves on its own.** The lookup that would
 fix it runs after the response, but the client neither polls nor invalidates, so
@@ -199,7 +200,8 @@ and a rewrite of a word whose `dictionary_senses` are empty is postponed rather
 than done ungrounded — spending the call would lose the grounding and stamp the
 word as current.
 
-**Nothing shortens the rewrite queue but time.** Bumping `CARD_VERSION` queues
-every carded word at once, and the budget is per night, so the last words in
-the pool wait a fortnight for a fix that shipped today. Saved words go first,
-which is the part that matters.
+**A night is capped at `DESCRIBE_BUDGET`, and that is on purpose.** Two thousand
+cards is most of a rewrite and about two dollars; the cap exists for the day
+something marks every word stale by mistake, which uncapped is the whole pool
+rewritten nightly and a bill to find out by. A one-off run that should ignore
+it passes `'{"describe":5000}'`.
