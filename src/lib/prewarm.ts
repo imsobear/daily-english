@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/d1'
-import { asc, eq, ne } from 'drizzle-orm'
+import { asc, eq, lt, ne, or } from 'drizzle-orm'
 
 import * as schema from '#/db/schema'
 import { dictionaryEntries, words } from '#/db/schema'
@@ -11,6 +11,7 @@ import {
 } from '#/lib/ai'
 import { normalizeHeadword } from '#/lib/dictionary'
 import {
+  ensureDictionarySenses,
   ensureEntry,
   ensureIpa,
   isDefined,
@@ -22,7 +23,11 @@ import {
 import type { LessonEnv } from '#/lib/generate-lesson'
 import { CEFR_LEVELS, type CefrLevel } from '#/lib/settings'
 import { poolEntry, poolLevel } from '#/lib/vocabulary'
-import { describeWordTwice, readWorkersAi } from '#/lib/word-card'
+import {
+  CARD_VERSION,
+  describeWordTwice,
+  readWorkersAi,
+} from '#/lib/word-card'
 
 /**
  * Define, speak and describe words, ahead of anyone asking.
@@ -73,16 +78,17 @@ export const PREWARM_BATCH = 20
 /**
  * Cards per run, sized to finish the pool rather than to stay free.
  *
- * A card measures 415 tokens in and about 925 out, which at gpt-oss-120b's
- * rate is 76 Neurons; the free allocation of 10,000 a day is therefore about
- * 130 cards, and everything past it bills at $0.011 per 1,000. Four hundred is
- * roughly a quarter a night.
+ * A card measures about 800 tokens in and 1,250 out, which at gpt-oss-120b's
+ * rate is roughly 110 Neurons; the free allocation of 10,000 a day is therefore
+ * about ninety cards, and everything past it bills at $0.011 per 1,000. Four
+ * hundred is some forty cents a night.
  *
- * That is a fee with an end date. Only the words nobody has carded cost
- * anything — the pass skips the rest — so four hundred a night clears the pool
- * in a fortnight for a few dollars all told, after which the nightly run finds
- * a handful of newly saved words and spends nearly nothing. Drop this back to
- * 130 to stay inside the allowance and take a couple of months instead.
+ * That is a fee with an end date. Only a word whose card is missing or behind
+ * the current recipe costs anything — the pass skips the rest — so four hundred
+ * a night clears the pool in a fortnight for a few dollars all told, after
+ * which the nightly run finds a handful of newly saved words and spends nearly
+ * nothing. Drop this back to 90 to stay inside the allowance and take a couple
+ * of months instead.
  */
 export const DESCRIBE_BUDGET = 400
 
@@ -132,33 +138,47 @@ function audioKeyFor(normalized: string) {
 }
 
 /**
- * The level to pitch a card at.
- *
- * Words the pool has never carried are the ones a learner typed in themselves,
- * and B1 is the middle of the range rather than a guess about them.
- */
-function levelOf(normalized: string): CefrLevel {
-  return poolEntry(normalized)?.level ?? 'B1'
-}
-
-/**
  * Give one word the card the model writes: senses in frequency order, each
- * with its Chinese and an example, plus collocations and family.
+ * with its Chinese and two examples, plus collocations and family.
  *
- * Returns false when nothing usable came back, which leaves the dictionary
- * senses in place and the word eligible for the next run.
+ * What the model is given matters more than anything else here. The pool knows
+ * the part of speech it teaches the word as, and the row keeps what the
+ * dictionary said; asked without either, the model wrote the verb "dance" onto
+ * the card for "dancing" and nobody found out for a month. A word described
+ * before the dictionary text was kept gets it fetched again rather than
+ * rewritten from nothing.
+ *
+ * Returns false when nothing usable came back, which leaves the senses that
+ * are there in place and the word eligible for the next run.
  */
 export async function describeEntry(
   env: LessonEnv,
   db: EntriesDb,
   normalized: string,
-  headword?: string,
+  entry?: Entry,
 ) {
-  const card = await describeWordTwice({
-    headword: headword ?? normalized,
-    level: levelOf(normalized),
-    ...readWorkersAi(env),
-  })
+  const pool = poolEntry(normalized)
+  const grounding = entry
+    ? await ensureDictionarySenses(db, entry)
+    : { senses: [], reachable: true }
+
+  // A word that already has a card can wait for a night the dictionary
+  // answers. Rewriting it during an outage would spend the call, lose the
+  // grounding that is the point of the rewrite, and stamp the word as done.
+  if (!grounding.reachable && entry?.source === 'model') return false
+
+  const card = await describeWordTwice(
+    {
+      headword: entry?.headword ?? normalized,
+      // A word the pool never carried is one a learner typed in or tapped out
+      // of an article, and B1 is the middle of the range rather than a guess
+      // about them.
+      level: pool?.level ?? 'B1',
+      pos: pool?.pos ?? null,
+      dictionary: grounding.senses,
+    },
+    readWorkersAi(env),
+  )
   if (!card) return false
 
   await db
@@ -168,6 +188,7 @@ export async function describeEntry(
       collocations: JSON.stringify(card.collocations),
       family: JSON.stringify(card.family),
       source: 'model',
+      cardVersion: CARD_VERSION,
       updatedAt: new Date().toISOString(),
     })
     .where(eq(dictionaryEntries.normalized, normalized))
@@ -175,7 +196,8 @@ export async function describeEntry(
 }
 
 /**
- * The words learners have saved and the model has not described yet.
+ * The words learners have saved whose cards are not the ones we would write
+ * today — never described, or described by an older recipe.
  *
  * These go before the pool, because a word somebody typed in or tapped out of
  * an article is a word they chose, and it may not be in the pool at all —
@@ -194,7 +216,12 @@ export async function demandedWords(db: EntriesDb, limit = DEMANDED_LIMIT) {
       dictionaryEntries,
       eq(dictionaryEntries.normalized, words.normalized),
     )
-    .where(ne(dictionaryEntries.source, 'model'))
+    .where(
+      or(
+        ne(dictionaryEntries.source, 'model'),
+        lt(dictionaryEntries.cardVersion, CARD_VERSION),
+      ),
+    )
     .orderBy(asc(words.createdAt))
     .limit(limit)
   return rows.map((row) => row.normalized)
@@ -256,7 +283,7 @@ export async function prewarmBatch(
     if (needsCard(entry) && describeLeft > 0) {
       describeLeft -= 1
       try {
-        const written = await describeEntry(env, db, word, entry?.headword)
+        const written = await describeEntry(env, db, word, entry)
         if (written) tally.described += 1
       } catch (error) {
         tally.failed += 1

@@ -55,24 +55,32 @@ export const dictionaryEntries = sqliteTable('dictionary_entries', {
   ipa: text('ipa'),
   /** `Sense[]` JSON: part of speech, definition, Chinese and examples. */
   senses: text('senses').notNull().default('[]'),
+  /**
+   * `Sense[]` JSON as the free dictionary gave them, written once and never
+   * overwritten. Nobody is ever shown these. They are what the model is given
+   * to work from, so a card is a rewrite of something true rather than a
+   * recollection, and they are what a rewrite still has to work from years
+   * later when the model's version is the only thing in `senses`.
+   */
+  dictionarySenses: text('dictionary_senses').notNull().default('[]'),
   /** `string[]` JSON — the phrases this word really appears in. */
   collocations: text('collocations').notNull().default('[]'),
   /** `WordRelative[]` JSON — same stem, different part of speech. */
   family: text('family').notNull().default('[]'),
-  /** How good the senses are: 'pending', then 'dictionary', then 'model'. */
+  /** Where the senses came from: 'pending', then 'dictionary', then 'model'. */
   source: text('source').notNull().default('pending'),
+  /**
+   * Which recipe wrote the card — see `CARD_VERSION`.
+   *
+   * Provenance says where a card came from and cannot say whether it is still
+   * the card we would write today. This can, so improving the prompt or the
+   * checks re-warms the pool by itself over the following nights instead of
+   * needing an UPDATE run against production by hand.
+   */
+  cardVersion: integer('card_version').notNull().default(0),
   /** R2 object holding the spoken word, written on first play. */
   audioKey: text('audio_key'),
   updatedAt: text('updated_at').notNull(),
-
-  /*
-   * Replaced by the four columns above and dropped in the migration that
-   * follows this one, once the deployed Worker has stopped reading them.
-   */
-  definitions: text('definitions').notNull().default('[]'),
-  examples: text('examples').notNull().default('[]'),
-  senseSource: text('sense_source').notNull().default('legacy'),
-  detail: text('detail'),
 })
 
 export const words = sqliteTable(

@@ -22,12 +22,19 @@ which return empty rather than throwing on anything malformed:
       "pos": "noun",
       "definition": "the chance that something bad will happen",
       "zh": "风险；危险",
-      "examples": ["There is a high risk of flooding after the heavy rain."]
+      "examples": [
+        "There is a high risk of flooding after the heavy rain.",
+        "She took the risk and moved to a new city."
+      ]
     }
+  ],
+  "dictionary_senses": [
+    { "pos": "noun", "definition": "A possible adverse event", "zh": null, "examples": [] }
   ],
   "collocations": ["risk of", "risk factor", "high risk"],
   "family": [{ "word": "risky", "pos": "adjective" }],
   "source": "model",
+  "card_version": 1,
   "audio_key": "word-audio/marin/risk.mp3",
   "updated_at": "2026-08-26T20:41:02.000Z"
 }
@@ -48,10 +55,19 @@ underneath — so a word looks the same wherever it is met. `zh` is the word its
 in Chinese — 风险；危险, what a paper dictionary prints opposite the entry — and not
 the English definition translated. That is why it is in plain sight rather than
 behind a button: two characters cost a card no room and stop nobody reading the
-English, where a translated sentence would be read instead of it. `examples` is
-a list so a sense can grow a second sentence without a migration. The quiz reads
-a single line out of it, the first sense and its first example, and an empty list
-is what puts "Looking this one up…" on a feed card.
+English, where a translated sentence would be read instead of it. `examples`
+holds two sentences: one shows the word, two show that the first was not a
+fluke, and the first of them uses one of the collocations, so what is on display
+is the pattern rather than the word on its own. Only the word page prints both —
+the feed card and the sheet over an article have room for one. The quiz reads a
+single line out, the first sense and its first example, and an empty list is
+what puts "Looking this one up…" on a feed card.
+
+**`dictionary_senses`** is what the free dictionary said, written once by
+`saveDictionary` and never overwritten, and shown to nobody. It is what the
+model is given to work from. Keeping it is the difference between a rewrite and
+a fresh invention: by the time one happens, `senses` holds the model's own
+words, which is no grounding at all.
 
 **`collocations`** is the "Goes with" row of chips on the word page and
 **`family`** is "Same family" below it. Neither appears on the feed card — a
@@ -60,9 +76,15 @@ card is glanced at, and the definitions want that second to themselves.
 **`source`** is a ladder of three values that nothing displays: `pending` for a
 row reserved when a word was saved, `dictionary` for senses good enough to show
 while something better is written, `model` for the card. Nothing moves back
-down, and two predicates read it: request paths ask `needsSenses` — is there
-anything at all to show — and the nightly pass asks `needsCard` — is this still
-below `model`.
+down, and request paths ask `needsSenses` of it — is there anything at all to
+show.
+
+**`card_version`** is which recipe wrote the card, against `CARD_VERSION` in
+`src/lib/word-card.ts`. Provenance says where a card came from and cannot say
+whether it is still the card we would write today; this can, and `needsCard`
+reads both. Bumping the constant is the whole of rolling a better prompt out to
+words that already have a card — the nightly pass finds them and rewrites them
+over the following nights, saved words first.
 
 **`audio_key`** — `word-audio/marin/risk.mp3` — points at the clip in R2. The
 voice is part of the path on purpose: changing `TTS_VOICE` changes the key, the
@@ -71,15 +93,29 @@ serving a voice the rest of the app has moved on from.
 
 ## Where it comes from
 
-Two sources, and they do not overlap. `api.dictionaryapi.dev` is free, instant
+Two sources, and one feeds the other. `api.dictionaryapi.dev` is free, instant
 and the only reliable source of IPA; its senses are ordered historically, which
 is what once defined "despite" as a noun meaning disdain, so they are a stopgap
 and never the finished card. Workers AI (`@cf/openai/gpt-oss-120b`) writes the
-card — senses in modern frequency order, each with its Chinese and an example,
+card — senses in modern frequency order, each with its Chinese and two examples,
 plus collocations and family — and takes half a minute to do it.
-`src/lib/word-card.ts` throws out the parts of its answer that came back wrong:
-a definition written in Chinese, a gloss that runs to a sentence instead of
-giving the word, an inflection offered as a family member.
+
+The model is not asked cold. It gets the dictionary's senses and, when the word
+is in the pool, the part of speech the pool teaches it as, and it is told to
+choose and rewrite rather than invent. Asked with only a headword it invents the
+entry, and an inflected word is where that shows: the card for "dancing" came
+back describing the verb "dance", the one for "cleaner" the comparative of
+"clean". It is also told to keep facts out of the examples — no real people, no
+science, no dates — because a learner reads an example as true and cannot tell
+when it is not, and "Einstein's law of relativity" is what that costs.
+
+`src/lib/word-card.ts` then throws out the parts of the answer that came back
+wrong: a definition written in Chinese, a gloss that runs to a sentence instead
+of giving the word, an adverb glossed as an adjective, a second sense that is
+the first one reworded, an example that illustrates a relative of the word
+rather than the word, a collocation that is a fragment. Each of those is a
+defect found in a real card. What was dropped is handed to a second attempt in
+`describeWordTwice`, and the fuller of the two answers is the one stored.
 
 DeepSeek used to define words too, and no longer does: the card replaced it
 outright. DeepSeek now writes articles and nothing else.
@@ -109,9 +145,10 @@ someone's list or looked up by whoever tapped it first.
 The pass in `src/lib/prewarm.ts` writes every card there is, nightly on a cron
 and by hand when a word should not wait. It walks two lists in this order:
 
-1. **Saved words** — `demandedWords`, up to five hundred, oldest first. Somebody
-   chose these, and a word typed in by hand is not in the pool, so nothing else
-   would ever card it.
+1. **Saved words** — `demandedWords`, up to five hundred, oldest first: the ones
+   with no card and the ones whose card is behind `CARD_VERSION`. Somebody chose
+   these, and a word typed in by hand is not in the pool, so nothing else would
+   ever card it.
 2. **The pool** — `src/data/vocabulary.ts`, level by level, so the Explore feed
    deals words that already read properly.
 
@@ -141,30 +178,26 @@ allowance by accident.
 pool word has no audio until somebody plays it or a human triggers the pass by
 hand. That is a dollar of TTS deferred, not saved.
 
-**A card is written once and never revisited.** `describeWordTwice` retries
-within a single call and that is the whole of the automatic second chance:
-improving the prompt does nothing for words already described, and a card whose
-Chinese was rejected by the parsing looks identical to a good one afterwards.
-Putting words back in the queue is a hand-written `UPDATE` — `source` is what
-the pass reads, so
-
-```sql
-UPDATE dictionary_entries SET source = 'dictionary' WHERE source = 'model';
-```
-
-makes every carded word eligible again while leaving the card it has on screen
-until a better one lands. The next runs then re-describe them at the nightly
-budget, saved words first, and pay for each one over again.
+**A better prompt costs the pool over again.** Bumping `CARD_VERSION` queues
+every carded word for a rewrite, which is the point of it, but the rewrite is a
+model call per word at the nightly budget — a fortnight and a few dollars for
+the whole pool. Words keep the card they have on screen until a better one
+lands, so the cost is the only thing to think about; there is no way to fix a
+prompt for the words it was wrong about without paying for them again.
 
 **A pending card in the feed never resolves on its own.** The lookup that would
 fix it runs after the response, but the client neither polls nor invalidates, so
 "Looking this one up…" stays on screen until the learner loads another page.
 
-**The dictionary API is a single point of failure.** It is now the only thing
-a request can learn a word from, and the only source of IPA. When
-`api.dictionaryapi.dev` is down or slow a new word shows "Looking this one
-up…" until the pass reaches it; `ensureIpa` in the pass goes back for missing
-pronunciations, and nothing goes back for missing senses beyond the next run.
+**The dictionary API is a single point of failure.** It is the only thing a
+request can learn a word from, the only source of IPA, and now the model's
+grounding as well. It fails by dropping every request that misses its edge
+cache, for hours at a time, so a "slow" word and a word it has never heard of
+look alike from here. When it is down a new word shows "Looking this one up…"
+until the pass reaches it; `ensureIpa` goes back for missing pronunciations,
+and a rewrite of a word whose `dictionary_senses` are empty is postponed rather
+than done ungrounded — spending the call would lose the grounding and stamp the
+word as current.
 
 **Old columns are still on the table.** `definitions`, `examples`,
 `sense_source` and `detail` are backfilled into the new shape by

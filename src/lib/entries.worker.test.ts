@@ -1,10 +1,12 @@
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getDb, getEnv } from '#/db'
-import { users } from '#/db/schema'
+import { dictionaryEntries, users } from '#/db/schema'
 import {
   ensureEntry,
   entryCollocations,
+  entryDictionarySenses,
   entrySenses,
   loadEntries,
   loadEntry,
@@ -20,38 +22,48 @@ const sense: Sense[] = [
   { pos: 'verb', definition: 'to find something', zh: null, examples: [] },
 ]
 
-const CARD = {
-  senses: [
-    {
-      pos: 'verb',
-      definition: 'to come across something',
-      example: 'She discovered a leak.',
-      zh: '发现',
-    },
-  ],
-  collocations: ['discover that'],
-  family: [],
-}
-
 function word() {
   return `w${crypto.randomUUID().slice(0, 8)}`
 }
 
+/** What the model would send back for one of the made-up words above. */
+function card(headword: string) {
+  return {
+    senses: [
+      {
+        pos: 'verb',
+        definition: 'to come across something',
+        zh: '发现',
+        examples: [`She ${headword}ed a leak.`],
+      },
+    ],
+    collocations: [`${headword} that`],
+    family: [],
+  }
+}
+
 /** An env pointed at a model that is not really there. */
 function withModel(answer: unknown) {
+  const calls: string[] = []
   vi.stubGlobal(
     'fetch',
-    vi.fn(
-      async () =>
-        new Response(JSON.stringify(answer), {
-          headers: { 'Content-Type': 'application/json' },
-        }),
-    ),
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as {
+        messages?: { content?: string }[]
+      }
+      // The dictionary is fetched through the same stub and sends no body.
+      const prompt = body.messages?.[0]?.content
+      if (prompt) calls.push(prompt)
+      return new Response(JSON.stringify(answer), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }),
   )
-  return {
+  const env = {
     ...getEnv(),
     WORKERS_AI_MOCK_URL: 'https://model.test/word-card',
   } as unknown as Parameters<typeof describeEntry>[0]
+  return { env, prompts: calls }
 }
 
 afterEach(() => {
@@ -63,7 +75,7 @@ describe('the shared entry', () => {
     const db = getDb()
     const headword = word()
     await saveDictionary(db, headword, { headword, ipa: '/one/', senses: sense })
-    const env = withModel({ response: JSON.stringify(CARD) })
+    const { env } = withModel({ response: JSON.stringify(card(headword)) })
     await describeEntry(env, db, headword)
 
     await saveDictionary(db, headword, {
@@ -85,13 +97,77 @@ describe('the shared entry', () => {
     await saveDictionary(db, headword, { headword, ipa: null, senses: sense })
     expect(needsCard(await loadEntry(db, headword))).toBe(true)
 
-    const env = withModel({ response: JSON.stringify(CARD) })
+    const { env } = withModel({ response: JSON.stringify(card(headword)) })
     await describeEntry(env, db, headword)
 
     const entry = await loadEntry(db, headword)
     expect(entrySenses(entry)[0].zh).toBe('发现')
-    expect(entryCollocations(entry)).toEqual(['discover that'])
+    expect(entryCollocations(entry)).toEqual([`${headword} that`])
     expect(needsCard(entry)).toBe(false)
+  })
+
+  it('keeps what the dictionary said, and writes it to the model', async () => {
+    const db = getDb()
+    const headword = word()
+    await saveDictionary(db, headword, { headword, ipa: null, senses: sense })
+
+    const stored = await loadEntry(db, headword)
+    expect(entryDictionarySenses(stored)).toEqual(sense)
+    expect(stored?.source).toBe('dictionary')
+
+    const { env, prompts } = withModel({
+      response: JSON.stringify(card(headword)),
+    })
+    await describeEntry(env, db, headword, stored)
+
+    expect(prompts[0]).toContain('verb — to find something')
+    // Overwritten in `senses`, still there underneath for the next rewrite.
+    expect(entryDictionarySenses(await loadEntry(db, headword))).toEqual(sense)
+  })
+
+  it('fetches the dictionary again for a word carded before we kept it', async () => {
+    const db = getDb()
+    const headword = word()
+    await saveDictionary(db, headword, { headword, ipa: null, senses: sense })
+    await db
+      .update(dictionaryEntries)
+      .set({ dictionarySenses: '[]' })
+      .where(eq(dictionaryEntries.normalized, headword))
+
+    // The stub answers the dictionary with the same nonsense it answers
+    // everything, so this is the case worth being sure about: a rewrite that
+    // cannot recover the dictionary text still happens, ungrounded.
+    const { env, prompts } = withModel({
+      response: JSON.stringify(card(headword)),
+    })
+    expect(await describeEntry(env, db, headword, await loadEntry(db, headword)))
+      .toBe(true)
+    expect(prompts[0]).toContain('nothing for this word')
+  })
+
+  it('waits for the dictionary rather than rewrite a card without it', async () => {
+    const db = getDb()
+    const headword = word()
+    await saveDictionary(db, headword, { headword, ipa: null, senses: sense })
+    const { env } = withModel({ response: JSON.stringify(card(headword)) })
+    await describeEntry(env, db, headword, await loadEntry(db, headword))
+
+    // The dictionary drops every request that misses its cache for hours at a
+    // time. A rewrite during one of those would lose the grounding and stamp
+    // the word as done, so it is left for a night that goes better.
+    await db
+      .update(dictionaryEntries)
+      .set({ dictionarySenses: '[]' })
+      .where(eq(dictionaryEntries.normalized, headword))
+    const model = vi.fn(async (_url: string) => new Response('{}'))
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (String(url).includes('dictionaryapi')) throw new Error('timed out')
+      return model(String(url))
+    })
+
+    const carded = await loadEntry(db, headword)
+    expect(await describeEntry(env, db, headword, carded)).toBe(false)
+    expect(model).not.toHaveBeenCalled()
   })
 
   it('leaves a nonsense answer with the senses it had', async () => {
@@ -99,9 +175,8 @@ describe('the shared entry', () => {
     const headword = word()
     await saveDictionary(db, headword, { headword, ipa: null, senses: sense })
 
-    expect(
-      await describeEntry(withModel({ response: 'sorry, no' }), db, headword),
-    ).toBe(false)
+    const { env } = withModel({ response: 'sorry, no' })
+    expect(await describeEntry(env, db, headword)).toBe(false)
     expect(entrySenses(await loadEntry(db, headword))).toEqual(sense)
   })
 
