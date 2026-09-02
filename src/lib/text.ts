@@ -180,11 +180,15 @@ const MAX_CLIP_CHARS = 1200
 /**
  * Group sentences into a few balanced parts for text-to-speech.
  *
- * The Listen step stops at the end of every part, so the count is a pacing
- * decision, not a technical one: three pauses through an article is a rhythm,
- * five is an interruption. Packing to a fixed character budget instead would
- * hand that decision to however long the writer happened to be, which is how
- * a 300-word article ended up in five pieces.
+ * Nobody hears the seams — the player runs the parts together — so the count
+ * answers a different question: how well can we find a sentence inside a clip.
+ * There are no timings in the audio, only the guess that a sentence starts as
+ * far into the seconds as it does into the characters, and that guess drifts
+ * the longer the clip runs. Three parts keeps it close enough for tapping a
+ * sentence to land on it, without turning one article into a dozen requests.
+ *
+ * Splitting evenly rather than packing to a character budget keeps the parts
+ * a similar length, so the drift is the same wherever the learner taps.
  *
  * A runaway article still splits further, since the parts have to stay small
  * enough to synthesise.

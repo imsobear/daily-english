@@ -110,8 +110,6 @@ function LessonPage() {
   /** The recall quiz: which question is on screen, and what was picked where. */
   const [quizIndex, setQuizIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<number, string>>({})
-  /** How many leading clips the listening step has played, and so may show. */
-  const [heardClips, setHeardClips] = useState(0)
   /** null when idle, 'working' while synthesising, else a message to show. */
   const [audioRetry, setAudioRetry] = useState<string | null>(null)
   /** Set the moment the last step lands, holding what to offer next. */
@@ -150,7 +148,6 @@ function LessonPage() {
   useEffect(() => {
     setHeard(false)
     setActiveSentence(null)
-    setHeardClips(0)
     setPeeking(false)
     setQuizIndex(0)
     setAnswers({})
@@ -440,21 +437,6 @@ function LessonPage() {
     return lesson.words.find((word) => word.headword === headword)?.definition
   }
 
-  /**
-   * How much of the article the listening step may show.
-   *
-   * Only parts played all the way through are revealed, so the learner always
-   * hears a passage before they read it. Legacy single-clip articles carry an
-   * open-ended `to`, hence the clamp.
-   */
-  const revealedThrough =
-    heardClips > 0
-      ? Math.min(
-          (article.clips[heardClips - 1]?.to ?? -1) + 1,
-          article.sentences.length,
-        )
-      : 0
-
   return (
     <Shell title={article.title}>
       <ol className="grid grid-cols-4 gap-1.5 px-3.5 pt-2.5">
@@ -498,10 +480,16 @@ function LessonPage() {
         ) : null}
 
         {step === 0 && !silent ? (
-          <p className="text-sm text-ink-soft">
-            Listen one part at a time. Each part appears in writing once you
-            have heard it to the end.
-          </p>
+          <Card className="animate-pop-in text-center">
+            <span className="mx-auto grid size-14 place-items-center rounded-full bg-indigo-100 text-indigo-500">
+              <Ear className="size-7" />
+            </span>
+            <p className="mt-2.5 font-extrabold">Listen first</p>
+            <p className="mt-0.5 text-sm text-ink-soft">
+              The article once through, with nothing to read. Catching only
+              some of it is what this pass is for — the writing comes next.
+            </p>
+          </Card>
         ) : null}
 
         {listening && silent ? (
@@ -538,22 +526,6 @@ function LessonPage() {
               ) : null}
             </div>
           </Card>
-        ) : null}
-
-        {step === 0 && revealedThrough > 0 ? (
-          <div className="animate-rise-in">
-            <p className="kicker mb-2">
-              Heard so far · {heardClips} of {article.clips.length}
-            </p>
-            <Reader
-              sentences={article.sentences.slice(0, revealedThrough)}
-              paragraphStarts={article.paragraphStarts.filter(
-                (index) => index < revealedThrough,
-              )}
-              targets={targets}
-              onWordTap={onWordTap}
-            />
-          </div>
         ) : null}
 
         {step === 1 ? (
@@ -747,17 +719,9 @@ function LessonPage() {
             ref={playerRef}
             clips={article.clips}
             sentences={article.sentences}
-            // Only the first listen stops at the boundaries: it is handing
-            // over one part at a time. The other two play the article whole.
-            autoAdvance={step !== 0}
             startSpeed={step === FULL_LISTEN_STEP ? FULL_LISTEN_SPEED : 1}
             onSentenceChange={
               step === 1 || peeking ? setActiveSentence : undefined
-            }
-            onClipEnd={
-              step === 0
-                ? (index) => setHeardClips((count) => Math.max(count, index + 1))
-                : undefined
             }
             onComplete={() => setHeard(true)}
           />

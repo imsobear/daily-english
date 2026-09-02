@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type Ref,
@@ -27,37 +28,39 @@ export type PlayerHandle = {
  */
 const SEEK_SLACK_SECONDS = 0.2
 
+/** How far "back" goes, in seconds, crossing into the clip before if it must. */
+const REWIND_SECONDS = 10
+
 const SPEEDS = [0.75, 1, 1.25] as const
 
 /**
- * Plays an article as a sequence of clips.
+ * Plays an article that happens to be stored as several clips.
  *
- * Audio is stored per group of sentences rather than as one long file, so the
- * player advances through clips itself and reports which sentence is being
- * spoken. Position inside a clip is estimated from character counts, which is
- * accurate enough for highlighting given TTS keeps a near-constant pace.
+ * Splitting the audio is a recording decision — shorter requests synthesise
+ * faster, and a clip spanning a handful of sentences is what makes seeking to
+ * one of them accurate enough to be worth offering. None of that is the
+ * learner's business, so the player presents the clips as a single track: one
+ * bar over the whole article, playback running through the joins, and "back"
+ * measured in seconds rather than in parts.
  *
- * With `autoAdvance` off the player stops at every clip boundary, which is how
- * the listening step hands the learner one part at a time.
+ * Position within a clip is estimated from character counts, which holds well
+ * enough because TTS keeps a near-constant pace. The same estimate weights the
+ * clips against each other, so the bar moves at one speed across a boundary
+ * instead of jumping.
  */
 export function AudioPlayer({
   clips,
   sentences,
-  autoAdvance = true,
   startSpeed = 1,
   onSentenceChange,
-  onClipEnd,
   onComplete,
   ref,
 }: {
   clips: Clip[]
   sentences: string[]
-  autoAdvance?: boolean
   /** Where the speed control starts. Still the learner's to change. */
   startSpeed?: number
   onSentenceChange?: (index: number | null) => void
-  /** Fired with the index of a clip that just played to its end. */
-  onClipEnd?: (index: number) => void
   /** Fired when the final clip ends, so the whole article has been heard. */
   onComplete?: () => void
   ref?: Ref<PlayerHandle>
@@ -102,8 +105,33 @@ export function AudioPlayer({
 
   /** A sentence waiting for its clip's duration to be known before it seeks. */
   const pending = useRef<number | null>(null)
+  /**
+   * A position waiting on the same thing, in seconds — negative counts back
+   * from the end, which is the only way to land in a clip whose length is not
+   * known until it loads.
+   */
+  const pendingTime = useRef<number | null>(null)
   /** Where the current sentence ends, so playback stops with the sentence. */
   const stopAt = useRef<number | null>(null)
+
+  /**
+   * Each clip's share of the article, measured in characters.
+   *
+   * The bar covers the whole article but the element only ever knows the
+   * length of the clip it is playing, so the clips either side are sized by
+   * how much text they hold. Speech runs at a near-constant pace, so the bar
+   * crosses a join at the speed it was already moving.
+   */
+  const shares = useMemo(() => {
+    const chars = clips.map((item) =>
+      sentences
+        .slice(item.from, item.to + 1)
+        .reduce((sum, sentence) => sum + sentence.length, 0),
+    )
+    const total = chars.reduce((sum, count) => sum + count, 0)
+    if (total <= 0) return clips.map(() => 1 / Math.max(1, clips.length))
+    return chars.map((count) => count / total)
+  }, [clips, sentences])
 
   /**
    * Move to a clip, clearing the position along with it.
@@ -179,17 +207,29 @@ export function AudioPlayer({
   }))
 
   function handleLoadedMetadata() {
+    const element = audioRef.current
+    if (pendingTime.current != null && element) {
+      const offset = pendingTime.current
+      pendingTime.current = null
+      const at =
+        offset < 0 ? Math.max(0, element.duration + offset) : Math.max(0, offset)
+      element.currentTime = at
+      setElapsed(at)
+      if (playing) void element.play().catch(() => setPlaying(false))
+      return
+    }
     if (pending.current == null) return
     const index = pending.current
     pending.current = null
     seekToSentence(index)
   }
 
-  // Autoplay when the clip changes as part of continuous playback. A sentence
+  // Autoplay when the clip changes as part of continuous playback. Anything
   // waiting on metadata starts itself once it knows where to start.
   useEffect(() => {
     const element = audioRef.current
-    if (!element || !playing || pending.current != null) return
+    if (!element || !playing) return
+    if (pending.current != null || pendingTime.current != null) return
     element.playbackRate = speed
     void element.play().catch(() => setPlaying(false))
   }, [clipIndex, playing, speed])
@@ -230,8 +270,6 @@ export function AudioPlayer({
   }
 
   function handleEnded() {
-    onClipEnd?.(clipIndex)
-
     if (clipIndex >= clips.length - 1) {
       // Hold the bar full rather than snapping back to the last clip's start.
       setPlaying(false)
@@ -242,7 +280,6 @@ export function AudioPlayer({
     }
 
     goToClip(clipIndex + 1)
-    if (!autoAdvance) setPlaying(false)
   }
 
   function toggle() {
@@ -275,15 +312,22 @@ export function AudioPlayer({
 
   function back() {
     const element = audioRef.current
+    if (!element) return
     stopAt.current = null
-    // Well into a clip, "back" means the start of this clip, not the last one.
-    if (element && (finished || element.currentTime > 2)) {
-      element.currentTime = 0
-      setElapsed(0)
-      setFinished(false)
+    setFinished(false)
+
+    const target = element.currentTime - REWIND_SECONDS
+    if (target >= 0 || clipIndex === 0) {
+      element.currentTime = Math.max(0, target)
+      setElapsed(element.currentTime)
       return
     }
-    if (clipIndex > 0) goToClip(clipIndex - 1)
+
+    // The ten seconds run off the front of this clip and into the one before,
+    // whose length is unknown until it loads — so the remainder is carried
+    // over as a distance from its end.
+    pendingTime.current = target
+    goToClip(clipIndex - 1)
   }
 
   if (clips.length === 0) {
@@ -301,12 +345,12 @@ export function AudioPlayer({
       : 0
 
   const paused = !playing && !finished && elapsed > 0
-  // One tick per clip: position reads off the bar itself, so no caption row.
-  const fills = clips.map((_, index) => {
-    if (finished || index < clipIndex) return 1
-    return index === clipIndex ? ratio : 0
-  })
-  const part = finished ? clips.length : clipIndex + 1
+  const behind = shares
+    .slice(0, clipIndex)
+    .reduce((sum, share) => sum + share, 0)
+  const progress = finished
+    ? 1
+    : Math.min(1, behind + ratio * (shares[clipIndex] ?? 1))
 
   return (
     <div className="rounded-2xl bg-surface-sunk p-2.5">
@@ -326,39 +370,18 @@ export function AudioPlayer({
         className="hidden"
       />
 
-      <div className="mb-2 flex items-center gap-2">
-        <div className="flex h-1.5 flex-1 gap-1">
-          {fills.map((fill, index) => (
-            <div
-              key={index}
-              className="h-full flex-1 overflow-hidden rounded-full bg-hairline-strong"
-            >
-              <div
-                className="h-full rounded-full bg-brand-500 transition-[width] duration-200"
-                style={{ width: `${Math.round(fill * 100)}%` }}
-              />
-            </div>
-          ))}
-        </div>
-        {clips.length > 1 ? (
-          <span
-            aria-label={
-              finished
-                ? 'Whole article played'
-                : `Part ${part} of ${clips.length}`
-            }
-            className="text-[0.625rem] font-black tabular-nums text-ink-faint"
-          >
-            {part}/{clips.length}
-          </span>
-        ) : null}
+      <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-hairline-strong">
+        <div
+          className="h-full rounded-full bg-brand-500 transition-[width] duration-200"
+          style={{ width: `${Math.round(progress * 100)}%` }}
+        />
       </div>
 
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={back}
-          aria-label="Previous part"
+          aria-label="Back ten seconds"
           className="grid size-11 place-items-center rounded-xl text-ink-soft active:bg-hairline"
         >
           <SkipBack className="size-5" />

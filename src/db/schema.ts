@@ -217,10 +217,12 @@ export const lessonArticles = sqliteTable(
     stepBlindListenAt: text('step_blind_listen_at'),
     stepListenReadAt: text('step_listen_read_at'),
     /**
-     * The whole article heard straight through after reading it (listen again).
-     * The chunked first listen reveals each part in writing as it plays, so
-     * this is the only pass where the learner follows connected speech with
-     * nothing to fall back on — which is the pass that builds listening.
+     * The whole article heard straight through after reading it, faster.
+     *
+     * Both listens are blind; what separates them is what the learner brings.
+     * The first is cold, and getting only the shape of it is the exercise. By
+     * this one the words are known, so keeping up is all that is left — which
+     * is the part that turns reading vocabulary into listening vocabulary.
      */
     stepFullListenAt: text('step_full_listen_at'),
     stepExplainAt: text('step_explain_at'),
