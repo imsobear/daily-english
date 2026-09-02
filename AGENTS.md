@@ -6,8 +6,8 @@ Cloudflare Workers (D1, R2), live at
 [english.readish.app](https://english.readish.app).
 
 - **pnpm only.** Never `npm`/`npx`, and never install anything globally.
-- **Respond in English**, whatever language the request is written in.
-  See [language](docs/agents/language.md).
+- **Code, comments, commit messages and UI copy are English only.** The app
+  teaches English; chat replies can be whatever suits the conversation.
 - **Start `pnpm mock:ai` before `pnpm dev`.** Local runs and tests must never
   spend real DeepSeek or OpenAI credit.
   See [local development](docs/agents/local-dev.md).
