@@ -93,3 +93,5 @@ That file is an adaptation of CC BY-SA 4.0 data, so it stays under [CC BY-SA 4.0
 [PolyForm Noncommercial 1.0.0](LICENSE). Read it, learn from it, change it, build on it — for any noncommercial purpose. Commercial use is not granted, and that includes running it as a service for other people.
 
 It is not a self-hosting kit either. `wrangler.jsonc` is wired to the live account, and what actually makes the app work — the domain, the D1 database, the R2 bucket, the model keys — is not in here. There are no instructions for standing up your own copy, and no support for it.
+
+Just for test
