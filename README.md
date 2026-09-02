@@ -42,9 +42,9 @@ Live at [english.readish.app](https://english.readish.app). Sign in with Google.
 
 ## A lesson
 
-1. **Listen** — hear the article in parts, without reading first.
+1. **Listen** — hear the article once, without reading first.
 2. **Read** — follow the text, tap a word for a gloss, tap a sentence to hear it again.
-3. **Listen again** — the whole article, straight through, now that you know what it says.
+3. **Listen again** — the whole article, a little faster, now that you know what it says.
 4. **Recall** — a short quiz on the language that actually appeared.
 
 Playback is 0.75× / 1× / 1.25×. Articles stay on your account: an unfinished lesson opens where you left it, and a finished one can be stepped through again.
