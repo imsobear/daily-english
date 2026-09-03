@@ -21,6 +21,8 @@ import {
   type Entry,
 } from '#/lib/entries'
 import type { LessonEnv } from '#/lib/generate-lesson'
+import { baseForm } from '#/lib/inflections'
+import { partsOf } from '#/lib/lexicon'
 import { CEFR_LEVELS, type CefrLevel } from '#/lib/settings'
 import { poolEntry, poolLevel } from '#/lib/vocabulary'
 import {
@@ -175,6 +177,7 @@ export async function describeEntry(
       // about them.
       level: pool?.level ?? 'B1',
       pos: pool?.pos ?? null,
+      formOf: baseForm(normalized, partsOf),
       dictionary: grounding.senses,
     },
     readWorkersAi(env),

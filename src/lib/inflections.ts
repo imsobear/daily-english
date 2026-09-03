@@ -1,3 +1,5 @@
+import type { PartOfSpeech } from '#/lib/vocabulary'
+
 /**
  * The forms of a word that are still the same word.
  *
@@ -181,6 +183,66 @@ export function formsOf(base: string, { comparative = true } = {}) {
   }
   for (const irregular of IRREGULAR[word] ?? []) forms.add(irregular)
   return forms
+}
+
+/** Undo one ending, every way it could have been added. */
+function stemsOf(word: string, ending: string) {
+  const cut = word.slice(0, -ending.length)
+  const stems = [cut, `${cut}e`]
+  if (cut.length > 2 && cut.at(-1) === cut.at(-2)) stems.push(cut.slice(0, -1))
+  if (cut.endsWith('i')) stems.push(`${cut.slice(0, -1)}y`)
+  return stems
+}
+
+/**
+ * The word this one is only a form of, if there is one.
+ *
+ * A headword that is a form of another word must not be described as that
+ * other word: the card for "building" is the thing on the corner and the card
+ * for "cleaner" is the person, however loudly the dictionary lists "build" and
+ * "more clean" under the same spelling. A headword that merely has two jobs —
+ * "squash", "book" — is a different case and needs both of them.
+ *
+ * Two questions separate them, and the ending alone answers neither. Whether
+ * the shorter string is a word at all: "spring" keeps its verb because "spr"
+ * is nothing. And what part of speech that word is, because an ending means
+ * different things on different stems — `-ing` and `-ed` are only inflections
+ * on a verb, `-er` and `-est` only on an adjective, which is what tells the
+ * comparative "cleaner" from the person "manager" and "letter" from "let".
+ */
+export function baseForm(
+  headword: string,
+  partsOf: (word: string) => readonly PartOfSpeech[],
+) {
+  const word = headword.toLowerCase()
+
+  const pick = (
+    stems: string[],
+    { least = 3, is }: { least?: number; is: PartOfSpeech[] },
+  ) =>
+    stems.find(
+      (stem) =>
+        stem.length >= least &&
+        stem !== word &&
+        partsOf(stem).some((pos) => is.includes(pos)),
+    ) ?? null
+
+  if (word.endsWith('ing')) return pick(stemsOf(word, 'ing'), { is: ['v'] })
+  if (word.endsWith('ed')) {
+    return pick([...stemsOf(word, 'ed'), word.slice(0, -1)], { is: ['v'] })
+  }
+  // Four letters, because the three-letter words the profiles happen to call
+  // adjectives are the ones nobody compares: "off" is an adjective in "the
+  // milk is off", and it made "offer" a comparative of it.
+  const comparative = { least: 4, is: ['adj'] as PartOfSpeech[] }
+  if (word.endsWith('est')) return pick(stemsOf(word, 'est'), comparative)
+  if (word.endsWith('er')) return pick(stemsOf(word, 'er'), comparative)
+  if (word.endsWith('ies')) {
+    return pick([`${word.slice(0, -3)}y`], { is: ['n', 'v'] })
+  }
+  if (word.endsWith('es')) return pick([word.slice(0, -2)], { is: ['n', 'v'] })
+  if (word.endsWith('s')) return pick([word.slice(0, -1)], { is: ['n', 'v'] })
+  return null
 }
 
 /**

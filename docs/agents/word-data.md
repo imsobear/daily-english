@@ -34,7 +34,7 @@ which return empty rather than throwing on anything malformed:
   "collocations": ["risk of", "risk factor", "high risk"],
   "family": [{ "word": "risky", "pos": "adjective" }],
   "source": "model",
-  "card_version": 1,
+  "card_version": 2,
   "audio_key": "word-audio/marin/risk.mp3",
   "updated_at": "2026-08-26T20:41:02.000Z"
 }
@@ -67,7 +67,10 @@ what puts "Looking this one up…" on a feed card.
 `saveDictionary` and never overwritten, and shown to nobody. It is what the
 model is given to work from. Keeping it is the difference between a rewrite and
 a fresh invention: by the time one happens, `senses` holds the model's own
-words, which is no grounding at all.
+words, which is no grounding at all. It holds the whole entry, while the
+stopgap in `senses` holds the first three — the same list cut two ways, because
+what a learner should be shown before the card arrives is short and what the
+model needs is everything.
 
 **`collocations`** is the "Goes with" row of chips on the word page and
 **`family`** is "Same family" below it. Neither appears on the feed card — a
@@ -108,6 +111,24 @@ back describing the verb "dance", the one for "cleaner" the comparative of
 "clean". It is also told to keep facts out of the examples — no real people, no
 science, no dates — because a learner reads an example as true and cannot tell
 when it is not, and "Einstein's law of relativity" is what that costs.
+
+The pool's part of speech is where the card starts and not usually where it
+ends. It was a wall once, which is right for a word that is only a form of
+another one and wrong for a word that is simply two words: the pool carries
+"squash" as a noun, and the card came back a sport, a drink and a cramped space
+with no mention of crushing anything. `baseForm` in `src/lib/inflections.ts`
+tells the two apart by asking whether the shorter string is a word and what
+part of speech it is — `-ing` and `-ed` are inflections only on a verb, `-er`
+and `-est` only on an adjective, which is what separates the comparative
+"cleaner" from the person "manager", and "building" from "spring". Only when it
+finds one does the wall go up, and then the prompt names the word underneath so
+the model can skip the half of the dictionary entry that belongs to it.
+
+That lookup needs a dictionary of its own, because the pool is a syllabus
+rather than a word list and leaves out the commonest words — which are exactly
+the ones other words are built from. `src/data/lexicon.ts` is the profiles
+before any of that filtering, 8,000-odd words with their parts of speech,
+written by the same generator.
 
 `src/lib/word-card.ts` then throws out the parts of the answer that came back
 wrong: a definition written in Chinese, a gloss that runs to a sentence instead
