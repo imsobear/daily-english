@@ -96,10 +96,13 @@ serving a voice the rest of the app has moved on from.
 
 ## Where it comes from
 
-Two sources, and one feeds the other. `api.dictionaryapi.dev` is free, instant
-and the only reliable source of IPA; its senses are ordered historically, which
+Two sources, and one feeds the other. `api.dictionaryapi.dev` is free and the
+only one of them that carries IPA; its senses are ordered historically, which
 is what once defined "despite" as a noun meaning disdain, so they are a stopgap
-and never the finished card. Workers AI (`@cf/openai/gpt-oss-120b`) writes the
+and never the finished card. Wiktionary's own REST endpoint is asked at the
+same moment and used when that one fails, which it does for days at a time —
+it is the same data, since the other is a scrape of it, minus the
+pronunciation. A word rescued by the backup waits for `ensureIpa` to find one. Workers AI (`@cf/openai/gpt-oss-120b`) writes the
 card — senses in modern frequency order, each with its Chinese and two examples,
 plus collocations and family — and takes half a minute to do it.
 
@@ -211,11 +214,14 @@ paying for them again.
 fix it runs after the response, but the client neither polls nor invalidates, so
 "Looking this one up…" stays on screen until the learner loads another page.
 
-**The dictionary API is a single point of failure.** It is the only thing a
-request can learn a word from, the only source of IPA, and now the model's
-grounding as well. It fails by dropping every request that misses its edge
-cache, for hours at a time, so a "slow" word and a word it has never heard of
-look alike from here. When it is down a new word shows "Looking this one up…"
+**The dictionary is where a word comes from, and it is not dependable.** It is
+the only thing a request can learn a word from and the model's grounding as
+well. `api.dictionaryapi.dev` fails by dropping every request that misses its
+edge cache — a 522 twenty seconds late, for days at a time — so a "slow" word
+and a word it has never heard of look alike from here. Wiktionary behind it
+makes that survivable rather than solved: both are the same data and the same
+project, so a Wikimedia outage is still an outage, and only the first of them
+has IPA. When both are down a new word shows "Looking this one up…"
 until the pass reaches it; `ensureIpa` goes back for missing pronunciations,
 and a rewrite of a word whose `dictionary_senses` are empty is postponed rather
 than done ungrounded — spending the call would lose the grounding and stamp the

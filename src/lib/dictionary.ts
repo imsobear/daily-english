@@ -21,6 +21,37 @@ export type DictionaryApiEntry = {
   }>
 }
 
+type WiktionaryBlock = {
+  partOfSpeech?: string
+  definitions?: Array<{ definition?: string; examples?: string[] }>
+}
+
+const ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+}
+
+/** A sentence out of the markup Wiktionary wraps it in. */
+function plainText(html: string) {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (whole, code: string) => {
+      if (code.startsWith('#')) {
+        const point = Number(
+          code.startsWith('#x') ? `0x${code.slice(2)}` : code.slice(1),
+        )
+        return Number.isFinite(point) ? String.fromCodePoint(point) : whole
+      }
+      return ENTITIES[code.toLowerCase()] ?? whole
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function normalizeHeadword(raw: string) {
   return raw.trim().toLowerCase().replace(/\s+/g, ' ')
 }
@@ -105,7 +136,7 @@ export function americanIpa(entry: DictionaryApiEntry) {
  * seconds rather than six. Late is the same as missing here: the card renders
  * from whatever came back, and the model call behind it fixes the rest.
  */
-export async function lookupDictionary(
+async function lookupFreeDictionary(
   headword: string,
 ): Promise<DictionaryHit | null> {
   const encoded = encodeURIComponent(headword)
@@ -131,4 +162,91 @@ export async function lookupDictionary(
     ipa: americanIpa(entry),
     senses,
   }
+}
+
+/**
+ * Wiktionary's own shape, mapped onto the one `sensesFrom` reads.
+ *
+ * It groups by part of speech and by etymology at once, which is the same
+ * division the other API expresses as separate entries, so each group becomes
+ * a meaning and the reader below is unchanged. Definitions arrive as HTML: the
+ * links and the little grey labels are markup around a sentence, and the
+ * sentence is all a card wants.
+ */
+export function wiktionarySenses(payload: unknown) {
+  const blocks = (payload as { en?: WiktionaryBlock[] } | null)?.en
+  if (!Array.isArray(blocks)) return []
+
+  return sensesFrom([
+    {
+      meanings: blocks.map((block) => ({
+        partOfSpeech: (block.partOfSpeech ?? '').toLowerCase(),
+        definitions: (block.definitions ?? []).map((item) => ({
+          definition: plainText(item.definition ?? ''),
+          example: item.examples?.[0] ? plainText(item.examples[0]) : undefined,
+        })),
+      })),
+    },
+  ])
+}
+
+async function lookupWiktionary(headword: string) {
+  const encoded = encodeURIComponent(headword)
+  const response = await fetch(
+    `https://en.wiktionary.org/api/rest_v1/page/definition/${encoded}`,
+    {
+      signal: AbortSignal.timeout(4000),
+      // Wikimedia asks callers to say who they are, and answers slower to the
+      // ones that do not.
+      headers: { 'user-agent': 'daily-english (https://english.readish.app)' },
+    },
+  )
+
+  if (response.status === 404) return []
+  if (!response.ok) throw new Error(`Wiktionary lookup failed (${response.status})`)
+  return wiktionarySenses(await response.json())
+}
+
+/**
+ * Free dictionary lookup: an IPA, and senses good enough to show while the
+ * model writes better ones. Its recorded audio is deliberately ignored — the
+ * media host 502s, and the clips mixed Australian, British and American
+ * speakers.
+ *
+ * A learner is waiting on this, having just tapped a word, so it gets three
+ * seconds rather than six. Late is the same as missing here: the card renders
+ * from whatever came back, and the model call behind it fixes the rest.
+ *
+ * Which is why Wiktionary is asked at the same time rather than afterwards.
+ * `api.dictionaryapi.dev` is a scrape of Wiktionary and has spent days at a
+ * stretch answering nothing but a 522 twenty seconds late, and waiting out one
+ * host before starting on the next would cost the learner both. It stays the
+ * preferred answer while it is up, because it is the only one of the two that
+ * carries a pronunciation; a word rescued by the backup has no IPA until
+ * `ensureIpa` goes back for it.
+ */
+export async function lookupDictionary(
+  headword: string,
+): Promise<DictionaryHit | null> {
+  // Started before the primary is awaited, and left to run if it is not
+  // needed. A rejection here is an answer, not a crash.
+  const backup = lookupWiktionary(headword).catch(() => null)
+
+  let failure: unknown = null
+  const hit = await lookupFreeDictionary(headword).catch((error: unknown) => {
+    failure = error
+    return null
+  })
+  if (hit) return hit
+
+  const senses = await backup
+  // Neither host answered, which is a different thing from a word neither has
+  // heard of, and `ensureDictionarySenses` reads the difference off the throw.
+  if (!senses) {
+    if (failure) throw failure
+    return null
+  }
+  if (senses.length === 0) return null
+
+  return { headword, ipa: null, senses }
 }

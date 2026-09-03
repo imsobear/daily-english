@@ -154,15 +154,19 @@ describe('the shared entry', () => {
 
     // The dictionary drops every request that misses its cache for hours at a
     // time. A rewrite during one of those would lose the grounding and stamp
-    // the word as done, so it is left for a night that goes better.
+    // the word as done, so it is left for a night that goes better. Both hosts
+    // have to be down for that, which is the point of there being two.
     await db
       .update(dictionaryEntries)
       .set({ dictionarySenses: '[]' })
       .where(eq(dictionaryEntries.normalized, headword))
     const model = vi.fn(async (_url: string) => new Response('{}'))
     vi.stubGlobal('fetch', async (url: string) => {
-      if (String(url).includes('dictionaryapi')) throw new Error('timed out')
-      return model(String(url))
+      const target = String(url)
+      if (target.includes('dictionaryapi') || target.includes('wiktionary')) {
+        throw new Error('timed out')
+      }
+      return model(target)
     })
 
     const carded = await loadEntry(db, headword)

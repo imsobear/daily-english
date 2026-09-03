@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { americanIpa, sensesFrom, type DictionaryApiEntry } from './dictionary'
+import {
+  americanIpa,
+  sensesFrom,
+  wiktionarySenses,
+  type DictionaryApiEntry,
+} from './dictionary'
 
 describe('americanIpa', () => {
   it('prefers the variant paired with US audio over the RP headline', () => {
@@ -84,6 +89,44 @@ describe('sensesFrom', () => {
 
   it('takes a few from each part of speech rather than a few from the top', () => {
     expect(sensesFrom(squash)).toHaveLength(5)
+  })
+
+  it('reads Wiktionary, which groups the same word the same way', () => {
+    const senses = wiktionarySenses({
+      en: [
+        {
+          partOfSpeech: 'Noun',
+          definitions: [
+            { definition: '<span class="usage-label-sense"></span> A sport.' },
+            { definition: '' },
+          ],
+        },
+        {
+          partOfSpeech: 'Verb',
+          definitions: [
+            {
+              definition: 'To press into a flat mass; to <a href="/x">crush</a>.',
+              examples: ['She <b>squashed</b> the box&nbsp;flat.'],
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(senses).toEqual([
+      { pos: 'noun', definition: 'A sport.', zh: null, examples: [] },
+      {
+        pos: 'verb',
+        definition: 'To press into a flat mass; to crush.',
+        zh: null,
+        examples: ['She squashed the box flat.'],
+      },
+    ])
+  })
+
+  it('has nothing to say about a page with no English on it', () => {
+    expect(wiktionarySenses({ fr: [{ partOfSpeech: 'Nom' }] })).toEqual([])
+    expect(wiktionarySenses(null)).toEqual([])
   })
 
   it('drops the senses nobody meets', () => {

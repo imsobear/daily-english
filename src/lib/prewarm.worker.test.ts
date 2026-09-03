@@ -155,8 +155,10 @@ describe('prewarmBatch', () => {
     await prewarmBatch(env, [word])
 
     // The card is written and nothing re-describes it, so this lookup is the
-    // only chance the word has left of ever being transcribed.
+    // only chance the word has left of ever being transcribed. Both hosts are
+    // asked at once, and only the first of them has a pronunciation to give.
     expect(calls).toEqual([
+      `https://en.wiktionary.org/api/rest_v1/page/definition/${word}`,
       `https://api.dictionaryapi.dev/api/v2/entries/en/${word}`,
     ])
   })
