@@ -48,8 +48,12 @@ export type WordCard = {
  * 1 — grounded in the dictionary, two examples a sense, examples checked
  *     against the headword. Everything before it was written from the
  *     headword alone.
+ * 2 — grounded in the whole dictionary entry rather than the first three
+ *     senses of its first homograph, and free to leave the pool's part of
+ *     speech where the word is a second word rather than a second form. The
+ *     two together are what "squash" needed to be a verb as well as a sport.
  */
-export const CARD_VERSION = 1
+export const CARD_VERSION = 2
 
 /** What the writer is told about a word before it writes anything. */
 export type CardSubject = {
@@ -59,10 +63,16 @@ export type CardSubject = {
   dictionary: Sense[]
   /**
    * The part of speech the pool teaches this word as, when it is in the pool.
-   * `building` is carried as a noun and `experienced` as an adjective, and
-   * without this the model describes the verb underneath them instead.
+   * The card leads with it.
    */
   pos: PartOfSpeech | null
+  /**
+   * The word this one is a form of — `build` under `building` — when it is
+   * only a form. That is the one case where the part of speech above is a
+   * wall rather than a starting point, because the word underneath has a card
+   * of its own and the dictionary files both under the same spelling.
+   */
+  formOf: string | null
 }
 
 const POS_NAMES: Record<PartOfSpeech, string> = {
@@ -127,9 +137,23 @@ ${lines}
 Work from that list: keep the meanings a learner actually meets, drop the archaic and the narrowly technical, put them in the order they are met, and rewrite each one in plain English. Add a meaning only where the list has plainly missed a common one.`
 }
 
-function posRule(headword: string, pos: PartOfSpeech | null) {
+/**
+ * Which part of speech the card leads with, and which it must not wander into.
+ *
+ * The pool's tag was once a wall — every sense had to be that part of speech —
+ * which is right for a word that is a form of another one and wrong for a word
+ * that is simply two words. It cost "squash" the verb: the pool carries it as a
+ * noun, so the card came back as a sport, a drink and a cramped space, and the
+ * everyday sense of crushing something was nowhere. The wall now stands only
+ * where `formOf` says the word underneath has a card of its own.
+ */
+function posRule(subject: CardSubject) {
+  const { headword, pos, formOf } = subject
   if (!pos) return ''
-  return `\nThis card is for "${headword}" as a ${POS_NAMES[pos]} and nothing else — every sense must be that part of speech. Where the word is built from another, the other one has a card of its own: for "dancing" as a noun, describe the activity and never the verb "dance".\n`
+  if (formOf) {
+    return `\nThis card is for "${headword}" as a ${POS_NAMES[pos]} and nothing else — every sense must be that part of speech. "${headword}" is also a form of "${formOf}", which has a card of its own, and the dictionary files both under this spelling: skip everything in the list that belongs to "${formOf}" rather than to "${headword}". For "dancing" as a noun, describe the activity and never the verb "dance"; for "cleaner" as a noun, describe the person and the liquid and never the comparative of "clean".\n`
+  }
+  return `\nThe learner meets "${headword}" as a ${POS_NAMES[pos]}, so the first sense must be that part of speech. Another may follow it where the word is a second word in its own right — "book" is carried as a noun, and a card that never mentions booking a table has left out half of what the learner needs.\n`
 }
 
 function complaintRule(complaints: string[]) {
@@ -146,11 +170,11 @@ export function wordCardPrompt(subject: CardSubject, complaints: string[] = []) 
 Write the card for "${headword}".
 
 ${dictionaryBrief(subject.dictionary)}
-${posRule(headword, subject.pos)}${complaintRule(complaints)}
+${posRule(subject)}${complaintRule(complaints)}
 senses — up to ${MAX_SENSES}, most frequent first. Four fields each:
   "pos", in English: the part of speech, spelt out — noun, verb, adjective, adverb.
   "definition", in English: plain English a ${level} learner reads without a dictionary, never defining the word with itself or with a rarer word.
-  "zh", in Chinese: what this sense of the word *is* — the one or two words a paper dictionary prints opposite it, separated by "；", no subject and no full stop. For "optimistic": "乐观的". For "risk" as a noun: "风险；危险". Never the English definition translated, and never the example translated: "对未来或情况持积极期待" describes the word instead of giving it, and is the commonest way to get this wrong. For an adverb, give the adverb: "personally" is "就我个人而言", not "个人的".
+  "zh", in Chinese: what this sense of the word *is* — the one or two words a paper dictionary prints opposite it, separated by "；", no subject and no full stop. For "optimistic": "乐观的". For "risk" as a noun: "风险；危险". Never the English definition translated, and never the example translated: "对未来或情况持积极期待" describes the word instead of giving it, and is the commonest way to get this wrong. The gloss answers the definition standing beside it and leads where that definition leads: for "to crush something flat" the gloss is "压扁；挤压", and "镇压" belongs to a definition about putting a stop to something. For an adverb, give the adverb: "personally" is "就我个人而言", not "个人的".
   "examples", in English: ${EXAMPLES_PER_SENSE} sentences, both containing "${headword}" itself and using it in this sense and this part of speech. A word built from it will not do — "elimination" is not "eliminate" — and neither is the word doing a different job in the sentence. The first sentence must show one of the collocations you list below.
 Two senses that differ only in wording are one sense; give the place to a meaning that is genuinely different.
 Keep every example ordinary, the sort of thing anybody might say about everyday life. No real people, no real places, no history, no science, no numbers anyone could check. A learner reads an example as fact and cannot tell when it is wrong, so the safe sentence is the one that claims nothing.
@@ -225,7 +249,11 @@ export type ReadCard = { card: WordCard; complaints: string[] }
  * sense that was the first one said again, an adverb glossed as an adjective,
  * "a fever is when your temperature is high" as the definition of "fever".
  */
-export function parseWordCard(headword: string, raw: unknown): ReadCard | null {
+export function parseWordCard(
+  headword: string,
+  raw: unknown,
+  subject?: Pick<CardSubject, 'pos' | 'formOf'>,
+): ReadCard | null {
   const source =
     typeof raw === 'string' ? tryParse(raw) : ((raw ?? null) as Record<
       string,
@@ -236,6 +264,8 @@ export function parseWordCard(headword: string, raw: unknown): ReadCard | null {
   const complaints: string[] = []
   const word = headword.toLowerCase()
   const seen = new Set<string>()
+  const formOf = subject?.formOf ?? null
+  const locked = formOf && subject?.pos ? POS_NAMES[subject.pos] : null
 
   const senses = asArray(source.senses)
     .flatMap((item) => {
@@ -249,6 +279,15 @@ export function parseWordCard(headword: string, raw: unknown): ReadCard | null {
         return []
       }
       const pos = text(sense?.pos, 24) ?? ''
+      // Grounded on a dictionary that files "build" under "building", the
+      // model writes the verb out as a second sense and reads the list as
+      // permission. It is the one word the card is not about.
+      if (locked && pos && !pos.startsWith(locked)) {
+        complaints.push(
+          `"${headword}" as a ${pos} is really "${formOf}", which is not this card`,
+        )
+        return []
+      }
 
       // Two dozen characters is several Chinese equivalents and nowhere near a
       // sentence, which is the failure this length is here to catch: asked
@@ -436,7 +475,11 @@ export async function describeWord(
   }
 
   const body = (await response.json()) as { result?: unknown }
-  return parseWordCard(subject.headword, modelText(body.result ?? body))
+  return parseWordCard(
+    subject.headword,
+    modelText(body.result ?? body),
+    subject,
+  )
 }
 
 /**

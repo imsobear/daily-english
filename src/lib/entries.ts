@@ -176,13 +176,15 @@ export async function saveDictionary(
   normalized: string,
   hit: DictionaryHit,
 ): Promise<Entry> {
-  const senses = JSON.stringify(hit.senses)
   const row = {
     normalized,
     headword: hit.headword,
     ipa: hit.ipa ?? null,
-    senses,
-    dictionarySenses: senses,
+    // Three, so the stopgap the learner reads now does not turn into a wall of
+    // Wiktionary the moment a word has a long history. What the model works
+    // from tonight is the whole entry.
+    senses: JSON.stringify(hit.senses.slice(0, 3)),
+    dictionarySenses: JSON.stringify(hit.senses),
     source: 'dictionary',
     updatedAt: new Date().toISOString(),
   }

@@ -34,7 +34,7 @@ which return empty rather than throwing on anything malformed:
   "collocations": ["risk of", "risk factor", "high risk"],
   "family": [{ "word": "risky", "pos": "adjective" }],
   "source": "model",
-  "card_version": 1,
+  "card_version": 2,
   "audio_key": "word-audio/marin/risk.mp3",
   "updated_at": "2026-08-26T20:41:02.000Z"
 }
@@ -67,7 +67,10 @@ what puts "Looking this one up…" on a feed card.
 `saveDictionary` and never overwritten, and shown to nobody. It is what the
 model is given to work from. Keeping it is the difference between a rewrite and
 a fresh invention: by the time one happens, `senses` holds the model's own
-words, which is no grounding at all.
+words, which is no grounding at all. It holds the whole entry, while the
+stopgap in `senses` holds the first three — the same list cut two ways, because
+what a learner should be shown before the card arrives is short and what the
+model needs is everything.
 
 **`collocations`** is the "Goes with" row of chips on the word page and
 **`family`** is "Same family" below it. Neither appears on the feed card — a
@@ -93,10 +96,13 @@ serving a voice the rest of the app has moved on from.
 
 ## Where it comes from
 
-Two sources, and one feeds the other. `api.dictionaryapi.dev` is free, instant
-and the only reliable source of IPA; its senses are ordered historically, which
+Two sources, and one feeds the other. `api.dictionaryapi.dev` is free and the
+only one of them that carries IPA; its senses are ordered historically, which
 is what once defined "despite" as a noun meaning disdain, so they are a stopgap
-and never the finished card. Workers AI (`@cf/openai/gpt-oss-120b`) writes the
+and never the finished card. Wiktionary's own REST endpoint is asked at the
+same moment and used when that one fails, which it does for days at a time —
+it is the same data, since the other is a scrape of it, minus the
+pronunciation. A word rescued by the backup waits for `ensureIpa` to find one. Workers AI (`@cf/openai/gpt-oss-120b`) writes the
 card — senses in modern frequency order, each with its Chinese and two examples,
 plus collocations and family — and takes half a minute to do it.
 
@@ -108,6 +114,24 @@ back describing the verb "dance", the one for "cleaner" the comparative of
 "clean". It is also told to keep facts out of the examples — no real people, no
 science, no dates — because a learner reads an example as true and cannot tell
 when it is not, and "Einstein's law of relativity" is what that costs.
+
+The pool's part of speech is where the card starts and not usually where it
+ends. It was a wall once, which is right for a word that is only a form of
+another one and wrong for a word that is simply two words: the pool carries
+"squash" as a noun, and the card came back a sport, a drink and a cramped space
+with no mention of crushing anything. `baseForm` in `src/lib/inflections.ts`
+tells the two apart by asking whether the shorter string is a word and what
+part of speech it is — `-ing` and `-ed` are inflections only on a verb, `-er`
+and `-est` only on an adjective, which is what separates the comparative
+"cleaner" from the person "manager", and "building" from "spring". Only when it
+finds one does the wall go up, and then the prompt names the word underneath so
+the model can skip the half of the dictionary entry that belongs to it.
+
+That lookup needs a dictionary of its own, because the pool is a syllabus
+rather than a word list and leaves out the commonest words — which are exactly
+the ones other words are built from. `src/data/lexicon.ts` is the profiles
+before any of that filtering, 8,000-odd words with their parts of speech,
+written by the same generator.
 
 `src/lib/word-card.ts` then throws out the parts of the answer that came back
 wrong: a definition written in Chinese, a gloss that runs to a sentence instead
@@ -190,11 +214,14 @@ paying for them again.
 fix it runs after the response, but the client neither polls nor invalidates, so
 "Looking this one up…" stays on screen until the learner loads another page.
 
-**The dictionary API is a single point of failure.** It is the only thing a
-request can learn a word from, the only source of IPA, and now the model's
-grounding as well. It fails by dropping every request that misses its edge
-cache, for hours at a time, so a "slow" word and a word it has never heard of
-look alike from here. When it is down a new word shows "Looking this one up…"
+**The dictionary is where a word comes from, and it is not dependable.** It is
+the only thing a request can learn a word from and the model's grounding as
+well. `api.dictionaryapi.dev` fails by dropping every request that misses its
+edge cache — a 522 twenty seconds late, for days at a time — so a "slow" word
+and a word it has never heard of look alike from here. Wiktionary behind it
+makes that survivable rather than solved: both are the same data and the same
+project, so a Wikimedia outage is still an outage, and only the first of them
+has IPA. When both are down a new word shows "Looking this one up…"
 until the pass reaches it; `ensureIpa` goes back for missing pronunciations,
 and a rewrite of a word whose `dictionary_senses` are empty is postponed rather
 than done ungrounded — spending the call would lose the grounding and stamp the

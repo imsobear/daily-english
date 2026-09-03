@@ -455,12 +455,55 @@ describe('readList', () => {
   })
 })
 
+describe('parseWordCard, for a word that is only a form of another', () => {
+  const dancing = {
+    senses: [
+      {
+        pos: 'noun',
+        definition: 'the activity of moving your body to music',
+        zh: '舞蹈',
+        examples: ['She loves dancing.', 'Dancing keeps him fit.'],
+      },
+      {
+        pos: 'verb',
+        definition: 'to move your body to music',
+        zh: '跳舞',
+        examples: ['They were dancing all night.', 'He is dancing badly.'],
+      },
+    ],
+    collocations: ['go dancing'],
+    family: [],
+  }
+
+  const lock = { pos: 'n', formOf: 'dance' } as const
+
+  it('throws away the sense that is really the other word', () => {
+    const read = parseWordCard('dancing', JSON.stringify(dancing), lock)
+
+    expect(read?.card.senses.map((sense) => sense.pos)).toEqual(['noun'])
+    expect(read?.complaints).toEqual([
+      '"dancing" as a verb is really "dance", which is not this card',
+    ])
+  })
+
+  it('leaves a word with two jobs alone', () => {
+    const read = parseWordCard('dancing', JSON.stringify(dancing), {
+      pos: 'n',
+      formOf: null,
+    })
+
+    expect(read?.card.senses).toHaveLength(2)
+    expect(read?.complaints).toEqual([])
+  })
+})
+
 describe('wordCardPrompt', () => {
   const subject: CardSubject = {
     headword: 'bleak',
     level: 'B2',
     dictionary: [],
     pos: null,
+    formOf: null,
   }
 
   it('asks for the word at the level the learner set', () => {
@@ -491,15 +534,27 @@ describe('wordCardPrompt', () => {
     expect(wordCardPrompt(subject)).toContain('nothing for this word')
   })
 
-  it('pins the part of speech the pool teaches', () => {
-    // Without this, the card for "dancing" describes the verb "dance".
+  it('pins a word that is only a form of another to its own part of speech', () => {
+    // Without this, the card for "dancing" describes the verb "dance", which
+    // the dictionary files under the same spelling.
     const prompt = wordCardPrompt({
       ...subject,
       headword: 'dancing',
       pos: 'n',
+      formOf: 'dance',
     })
 
     expect(prompt).toContain('"dancing" as a noun and nothing else')
+    expect(prompt).toContain('belongs to "dance"')
+  })
+
+  it('lets a word with two jobs keep both, leading with the one taught', () => {
+    // "squash" is carried as a noun and is also the everyday verb; walling it
+    // in cost the card the crushing.
+    const prompt = wordCardPrompt({ ...subject, headword: 'squash', pos: 'n' })
+
+    expect(prompt).toContain('meets "squash" as a noun')
+    expect(prompt).not.toContain('nothing else')
   })
 
   it('tells a second attempt what the first one got wrong', () => {
