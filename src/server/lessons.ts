@@ -36,6 +36,7 @@ import {
 import { pickArticleWords, type ArticleSuggestion } from '#/lib/suggestions'
 import { paragraphStarts, splitSentences, wordAppearsIn } from '#/lib/text'
 import { starterWords } from '#/lib/vocabulary'
+import { drawWords } from '#/lib/word-draw'
 import { learnerDate, learnerToday } from '#/server/day'
 import { requireUser } from '#/lib/session'
 import { readSettings } from '#/server/settings'
@@ -588,29 +589,33 @@ export const createLesson = createServerFn({ method: 'POST' })
       orderBy: desc(lessons.createdAt),
       limit: 3,
     })
-    const recentIds = recentLessons.map((row) => row.id)
-    const recentTargets =
-      recentIds.length === 0
-        ? []
-        : await db
-            .select({ wordId: lessonWords.wordId })
-            .from(lessonWords)
-            .where(inArray(lessonWords.lessonId, recentIds))
-    const recentWordIds = new Set(
-      recentTargets
-        .map((row) => row.wordId)
-        .filter((id): id is string => Boolean(id)),
-    )
+    const recentIds = new Set(recentLessons.map((row) => row.id))
 
-    const nowSec = Math.floor(Date.now() / 1000)
-    const ranked = [...collection].sort((a, b) => {
-      const aDue = a.dueAt == null || a.dueAt <= nowSec ? 0 : 1
-      const bDue = b.dueAt == null || b.dueAt <= nowSec ? 0 : 1
-      return aDue - bDue || a.familiarity - b.familiarity
+    // Every target this learner has ever had. The draw wants two readings of
+    // it: which words are still waiting for a first lesson, and which sat in
+    // one of the last few and have had their turn.
+    const targets = await db
+      .select({
+        wordId: lessonWords.wordId,
+        lessonId: lessonWords.lessonId,
+      })
+      .from(lessonWords)
+      .innerJoin(lessons, eq(lessons.id, lessonWords.lessonId))
+      .where(eq(lessons.userId, user.id))
+    const taughtWordIds = new Set<string>()
+    const recentWordIds = new Set<string>()
+    for (const row of targets) {
+      if (!row.wordId) continue
+      taughtWordIds.add(row.wordId)
+      if (recentIds.has(row.lessonId)) recentWordIds.add(row.wordId)
+    }
+
+    const picked = drawWords({
+      collection,
+      taught: taughtWordIds,
+      recent: recentWordIds,
+      count: settings.wordsPerLesson,
     })
-    const fresh = ranked.filter((word) => !recentWordIds.has(word.id))
-    const recycled = ranked.filter((word) => recentWordIds.has(word.id))
-    const picked = [...fresh, ...recycled].slice(0, settings.wordsPerLesson)
     const entries = await loadEntries(
       db,
       picked.map((word) => word.normalized),
