@@ -6,6 +6,7 @@ import * as schema from '#/db/schema'
 import {
   estimateTtsCostUsd,
   generateArticle,
+  previousClipTail,
   readOpenAiApiKey,
   readTtsMockUrl,
   synthesizeSpeech,
@@ -269,6 +270,7 @@ export async function speakArticle(
   let spent = 0
   let failure: AiError | null = null
   let truncated = false
+  let previous: string | null = null
 
   for (const [index, group] of groups.entries()) {
     const from = cursor
@@ -293,13 +295,17 @@ export async function speakArticle(
     spent += text.length
 
     try {
+      // Later clips quote the previous tail in the style prompt so Marin
+      // does not reset pitch at the join. The tail is never spoken.
       const { audio, contentType } = await synthesizeSpeech({
         text,
+        previous,
         mockUrl: readTtsMockUrl(env),
         apiKey: readOpenAiApiKey(env),
       })
       await env.AUDIO.put(key, audio, { httpMetadata: { contentType } })
       chunks.push({ key, from, to })
+      previous = previousClipTail(group) || null
     } catch (error) {
       console.error(`TTS failed for chunk ${index}`, error)
       failure = error instanceof AiError ? error : null
