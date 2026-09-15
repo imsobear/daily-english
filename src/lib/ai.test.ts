@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AiError } from '#/lib/deepseek'
 import {
   estimateTtsCostUsd,
+  previousClipTail,
   readOpenAiApiKey,
   readTtsMockUrl,
   synthesizeSpeech,
+  ttsInstructions,
 } from '#/lib/ai'
 
 afterEach(() => {
@@ -33,6 +35,43 @@ describe('readOpenAiApiKey', () => {
 
   it('reads the key when production or local .dev.vars sets one', () => {
     expect(readOpenAiApiKey({ OPENAI_API_KEY: ' sk-test ' })).toBe('sk-test')
+  })
+})
+
+describe('previousClipTail', () => {
+  it('quotes the last two sentences when they still fit in a prompt', () => {
+    expect(
+      previousClipTail([
+        'Maya opened the notebook.',
+        'The week had cost her forty hours.',
+        'The pattern repeated every month.',
+      ]),
+    ).toBe('The week had cost her forty hours. The pattern repeated every month.')
+  })
+
+  it('drops back to the last sentence when two would crowd the prompt', () => {
+    const last = `${'The pattern repeated. '.repeat(20).trim()}`
+    expect(previousClipTail(['Short opener.', last])).toBe(last)
+  })
+
+  it('has nothing to hand off from an empty clip', () => {
+    expect(previousClipTail([])).toBe('')
+  })
+})
+
+describe('ttsInstructions', () => {
+  it('reads the first clip as a short article', () => {
+    const instructions = ttsInstructions()
+    expect(instructions.toLowerCase()).toMatch(/american/)
+    expect(instructions.toLowerCase()).toMatch(/natural|fluent/)
+    expect(instructions.toLowerCase()).not.toMatch(/continues|previous clip/)
+  })
+
+  it('tells later clips to keep the same reading, and quotes what they follow', () => {
+    const instructions = ttsInstructions('The pattern repeated every month.')
+    expect(instructions).toContain(ttsInstructions())
+    expect(instructions.toLowerCase()).toMatch(/continues|same reading/)
+    expect(instructions).toContain('The pattern repeated every month.')
   })
 })
 
@@ -129,6 +168,35 @@ describe('synthesizeSpeech', () => {
     expect(body.speed).toBe(1)
     expect(body.instructions.toLowerCase()).toMatch(/american/)
     expect(body.instructions.toLowerCase()).toMatch(/natural|fluent/)
+  })
+
+  it('hands the previous clip to the model as style, not as more text to speak', async () => {
+    let capturedBody = ''
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        capturedBody = String(init?.body ?? '')
+        return new Response(new Uint8Array([9]), {
+          headers: { 'Content-Type': 'audio/mpeg' },
+        })
+      }),
+    )
+
+    await synthesizeSpeech({
+      text: 'She kept going.',
+      previous: 'The pattern repeated every month.',
+      mockUrl: null,
+      apiKey: 'sk-test',
+    })
+
+    const body = JSON.parse(capturedBody) as {
+      input: string
+      instructions: string
+    }
+    expect(body.input).toBe('She kept going.')
+    expect(body.instructions).toBe(
+      ttsInstructions('The pattern repeated every month.'),
+    )
   })
 
   it('fails closed when no mock and no OpenAI key are configured', async () => {

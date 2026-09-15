@@ -224,6 +224,37 @@ export const TTS_SPEED = 1
 export const TTS_INSTRUCTIONS =
   'Speak in natural, fluent General American English, as a native speaker reading a short article aloud. Conversational pacing and easy rhythm. Warm and clear, not robotic, not overly careful, and not theatrical.'
 
+/** Two short sentences still fit; a third starts crowding the style prompt. */
+const HANDOFF_CHARS = 240
+
+/**
+ * The end of a clip, quoted into the next request so the model can keep the
+ * same reading rather than opening as a new take.
+ *
+ * Never put this on `input` — that would speak it twice. It only belongs in
+ * the style instructions, and only a tail so a long previous clip cannot
+ * drown the actual direction.
+ */
+export function previousClipTail(sentences: string[]): string {
+  if (sentences.length === 0) return ''
+  const last = sentences[sentences.length - 1] ?? ''
+  const prior = sentences[sentences.length - 2]
+  if (prior && prior.length + 1 + last.length <= HANDOFF_CHARS) {
+    return `${prior} ${last}`
+  }
+  return last
+}
+
+/**
+ * How to read this clip. Later clips get the previous tail so Marin does not
+ * reset pitch and energy at each join.
+ */
+export function ttsInstructions(previous?: string | null): string {
+  const tail = previous?.trim()
+  if (!tail) return TTS_INSTRUCTIONS
+  return `${TTS_INSTRUCTIONS} This clip continues that same reading. Do not open as a new take. Match the pitch, energy, and pace of what came before, as if you never stopped. The previous clip ended: "${tail}"`
+}
+
 const OPENAI_SPEECH_URL = 'https://api.openai.com/v1/audio/speech'
 /** Official gpt-4o-mini-tts list price, used only for the log line. */
 const USD_PER_AUDIO_MINUTE = 0.015
@@ -336,6 +367,8 @@ function classifyOpenAiTtsFailure(status: number, body: string): AiError {
  */
 export async function synthesizeSpeech(input: {
   text: string
+  /** End of the previous clip, for style only. Omitted on the first clip. */
+  previous?: string | null
   mockUrl?: string | null
   apiKey?: string | null
 }): Promise<SpokenAudio> {
@@ -362,7 +395,7 @@ export async function synthesizeSpeech(input: {
         model: TTS_MODEL,
         voice: TTS_VOICE,
         input: input.text,
-        instructions: TTS_INSTRUCTIONS,
+        instructions: ttsInstructions(input.previous),
         speed: TTS_SPEED,
         response_format: 'mp3',
       }),
