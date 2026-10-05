@@ -1,10 +1,14 @@
 import handler from '@tanstack/react-start/server-entry'
 
+import { legacyRedirect } from './lib/legacy-host'
+
 export { LessonWorkflow } from './workflows/lesson'
 export { PrewarmWorkflow } from './workflows/prewarm'
 
 export default {
-  fetch: handler.fetch.bind(handler),
+  fetch(...args: Parameters<typeof handler.fetch>) {
+    return legacyRedirect(args[0]) ?? handler.fetch(...args)
+  },
 
   /**
    * A night's worth of word cards, and the only thing that writes one.

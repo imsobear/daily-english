@@ -10,6 +10,12 @@
   "workers_dev": true,
   "routes": [
     {
+      "pattern": "english.goodone.si",
+      "custom_domain": true
+    },
+    {
+      // The old address. The Worker answers it only to redirect to the one
+      // above; see src/lib/legacy-host.ts.
       "pattern": "english.readish.app",
       "custom_domain": true
     }

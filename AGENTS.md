@@ -3,7 +3,7 @@
 Daily English is a mobile-first PWA that writes a short article from the words a
 learner has saved, reads it aloud, and quizzes them on it — TanStack Start on
 Cloudflare Workers (D1, R2), live at
-[english.readish.app](https://english.readish.app).
+[english.goodone.si](https://english.goodone.si).
 
 - **pnpm only.** Never `npm`/`npx`, and never install anything globally.
 - **Code, comments, commit messages and UI copy are English only.** The app

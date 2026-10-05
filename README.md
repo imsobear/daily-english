@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://english.readish.app">english.readish.app</a>
+  <a href="https://english.goodone.si">english.goodone.si</a>
   ·
   <a href="#development">Development</a>
   ·
@@ -38,7 +38,7 @@
 
 Daily English is a mobile-first PWA for learners who already collect vocabulary and need somewhere to *use* it. Each lesson is one short article written from the words on your list, read aloud in General American, then checked with a quick recall round. Five minutes, once a day.
 
-Live at [english.readish.app](https://english.readish.app). Sign in with Google.
+Live at [english.goodone.si](https://english.goodone.si). Sign in with Google.
 
 ## A lesson
 

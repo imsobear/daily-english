@@ -67,7 +67,7 @@ void refresh()
 chrome.cookies.onChanged.addListener((change) => {
   if (
     change.cookie.name === SESSION_COOKIE &&
-    change.cookie.domain.includes('readish.app')
+    change.cookie.domain.includes('goodone.si')
   ) {
     void refresh()
   }

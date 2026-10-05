@@ -1,4 +1,4 @@
-export const APP_ORIGIN = 'https://english.readish.app'
+export const APP_ORIGIN = 'https://english.goodone.si'
 export const SESSION_COOKIE = 'uid'
 
 export type ExtensionAccount = {

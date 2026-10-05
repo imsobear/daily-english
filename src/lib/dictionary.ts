@@ -198,7 +198,7 @@ async function lookupWiktionary(headword: string) {
       signal: AbortSignal.timeout(4000),
       // Wikimedia asks callers to say who they are, and answers slower to the
       // ones that do not.
-      headers: { 'user-agent': 'daily-english (https://english.readish.app)' },
+      headers: { 'user-agent': 'daily-english (https://english.goodone.si)' },
     },
   )
 
