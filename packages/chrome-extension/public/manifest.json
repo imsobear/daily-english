@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Readish Words",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Add a selected word or short phrase to your Readish list.",
   "permissions": ["contextMenus", "cookies"],
-  "host_permissions": ["https://english.readish.app/*"],
+  "host_permissions": ["https://english.goodone.si/*"],
   "background": {
     "service_worker": "background.js",
     "type": "module"

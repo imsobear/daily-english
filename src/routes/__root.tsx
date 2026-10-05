@@ -59,7 +59,7 @@ const PUBLIC = ['/login']
  * by a crawler that will not follow a relative path, and a preview deployment
  * pointing at the production artwork is better than one pointing at nothing.
  */
-const SITE = 'https://english.readish.app'
+const SITE = 'https://english.goodone.si'
 const TITLE = 'Daily English'
 const DESCRIPTION =
   'Save the words you meet. Every morning they come back as a short article you listen to, read, and then have to remember.'
